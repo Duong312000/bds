@@ -59,11 +59,11 @@ export const api = {
     const res = await fetch('/api/requests');
     return res.json();
   },
-  createRequest: async (customerId: number, userId: number, newData?: any, type: 'Ownership' | 'Deletion' = 'Ownership'): Promise<{ success: boolean; message?: string }> => {
+  createRequest: async (data: { customer_id?: number; property_id?: number; request_by: number; new_data?: any; type?: string }): Promise<{ success: boolean; message?: string }> => {
     const res = await fetch('/api/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customer_id: customerId, request_by: userId, new_data: newData, type })
+      body: JSON.stringify(data)
     });
     return res.json();
   },
@@ -92,6 +92,28 @@ export const api = {
   },
   getProperties: async (): Promise<Property[]> => {
     const res = await fetch('/api/properties');
+    return res.json();
+  },
+  createProperty: async (data: Partial<Property>): Promise<{ success: boolean }> => {
+    const res = await fetch('/api/properties', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  updateProperty: async (id: number, data: Partial<Property>): Promise<{ success: boolean }> => {
+    const res = await fetch(`/api/properties/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  deleteProperty: async (id: number): Promise<{ success: boolean }> => {
+    const res = await fetch(`/api/properties/${id}`, {
+      method: 'DELETE'
+    });
     return res.json();
   },
   getContracts: async (): Promise<Contract[]> => {
