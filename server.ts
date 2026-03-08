@@ -218,42 +218,51 @@ async function startServer() {
     } catch (err) { res.status(500).send("Stats Error"); }
   });
 
-  // VITE SETUP
-  // --- VITE SETUP (Sửa lại đoạn này) ---
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: "custom",
-  });
-  
-  app.use(vite.middlewares);
+// --- VITE SETUP CHUẨN CHO RAILWAY ---
+const vite = await createViteServer({
+  server: { 
+    middlewareMode: true,
+    hmr: { server: undefined } // Tránh xung đột cổng trên Railway
+  },
+  appType: "custom",
+});
 
-  app.use("*", async (req, res, next) => {
-    const url = req.originalUrl;
-    try {
-      // Đọc file index.html gốc của bạn
-      let template = `<!DOCTYPE html>
-        <html lang="en">
-          <head>
-            <meta charset="UTF-8" />
-            <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>Bất Động Sản</title>
-          </head>
-          <body>
-            <div id="root"></div>
-            <script type="module" src="/src/main.tsx"></script>
-          </body>
-        </html>`;
+// 1. Phải để Vite Middleware lên TRƯỚC các route khác
+app.use(vite.middlewares);
 
-      // Quan trọng: Vite cần transform file này để hiểu các file .tsx
-      template = await vite.transformIndexHtml(url, template);
-      
-      res.status(200).set({ "Content-Type": "text/html" }).end(template);
-    } catch (e) {
-      vite.ssrFixStacktrace(e as Error);
-      next(e);
-    }
-  });
+// 2. Route phục vụ Giao diện
+app.use("*", async (req, res, next) => {
+  const url = req.originalUrl;
+
+  // Nếu là yêu cầu API thì bỏ qua để Express xử lý bên trên
+  if (url.startsWith('/api')) return next();
+
+  try {
+    // HTML chuẩn để Vite có thể "Inject" React vào
+    let template = `
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Quản lý Bất Động Sản</title>
+        </head>
+        <body>
+          <div id="root"></div>
+          <script type="module" src="/src/main.tsx"></script>
+        </body>
+      </html>
+    `;
+
+    // CỰC KỲ QUAN TRỌNG: Vite biến đổi HTML để nó biết đường dịch /src/main.tsx
+    template = await vite.transformIndexHtml(url, template);
+
+    res.status(200).set({ "Content-Type": "text/html" }).end(template);
+  } catch (e) {
+    vite.ssrFixStacktrace(e as Error);
+    next(e);
+  }
+});
   const port = process.env.PORT || 3000;
   app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
 }
