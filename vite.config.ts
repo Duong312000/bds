@@ -1,8 +1,20 @@
 import tailwindcss from '@tailwindcss/vite';
-import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    // Cho phép host cụ thể của Railway hoặc dùng 'all' để linh hoạt
+    allowedHosts: [
+      'bds-production-69c8.up.railway.app', // Host hiện tại của bạn
+      '.railway.app' // Cho phép tất cả các sub-domain của railway
+    ],
+    // Nếu bạn muốn mở hoàn toàn (tiện nhưng ít bảo mật hơn một chút):
+    // allowedHosts: 'all'
+  },
+});
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
