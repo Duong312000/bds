@@ -17,7 +17,6 @@
     "@vitejs/plugin-react": "^5.0.4",
     "better-sqlite3": "^12.4.1",
     "clsx": "^2.1.1",
-    "pg": "^8.11.0",
     "dotenv": "^17.0.0",
     "express": "^4.21.2",
     "html2canvas": "^1.4.1",
