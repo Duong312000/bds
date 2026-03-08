@@ -3,19 +3,38 @@ import { createServer as createViteServer } from "vite";
 import pg from "pg";
 import path from "path";
 import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+
+// Load biến môi trường từ file .env (nếu có)
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 1. KẾT NỐI POSTGRESQL
 const { Pool } = pg;
+
+// 1. CẤU HÌNH KẾT NỐI DB (TRIỆT ĐỂ LỖI SSL & CONNECTION)
+const isLocal = !process.env.DATABASE_URL || process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1');
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  // Nếu là Railway thì bắt buộc dùng SSL, local thì không cần
+  ssl: isLocal ? false : { rejectUnauthorized: false }
 });
 
-// 2. KHỞI TẠO CẤU TRÚC BẢNG (CHUẨN POSTGRES)
+// Bắt lỗi idle client để tránh sập server ngang xương
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
+  process.exit(-1);
+});
+
+// 2. KHỞI TẠO CẤU TRÚC BẢNG
 async function initializeDB() {
+  if (!process.env.DATABASE_URL) {
+    console.error("❌ LỖI: Biến DATABASE_URL chưa được cấu hình trên Railway!");
+    return;
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -115,7 +134,6 @@ async function initializeDB() {
       );
     `);
 
-    // Kiểm tra dữ liệu mẫu
     const userCount = await client.query("SELECT count(*) FROM users");
     if (parseInt(userCount.rows[0].count) === 0) {
       await client.query("INSERT INTO users (username, password, role) VALUES ($1, $2, $3)", ["sales", "sales123", "sales"]);
@@ -140,9 +158,11 @@ async function initializeDB() {
 async function startServer() {
   const app = express();
   app.use(express.json());
+
+  // Chạy Init DB
   await initializeDB();
 
-  // --- AUTH API ---
+  // --- 1. API ROUTES (Ưu tiên hàng đầu) ---
   app.post("/api/login", async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -157,7 +177,6 @@ async function startServer() {
     } catch (err) { res.status(500).send("Login Error"); }
   });
 
-  // --- CUSTOMERS API ---
   app.get("/api/customers", async (req, res) => {
     try {
       const result = await pool.query(`
@@ -180,29 +199,28 @@ async function startServer() {
     } catch (err) { res.status(500).send("Create Error"); }
   });
 
-  // --- PROPERTIES API ---
   app.get("/api/properties", async (req, res) => {
-    const result = await pool.query("SELECT * FROM properties");
-    res.json(result.rows);
+    try {
+      const result = await pool.query("SELECT * FROM properties");
+      res.json(result.rows);
+    } catch (err) { res.status(500).send("Fetch properties error"); }
   });
 
-  // --- RESERVATIONS ---
   app.post("/api/reservations", async (req, res) => {
     const { customer_id, property_id, sales_id } = req.body;
     const code = "RES-" + Math.random().toString(36).substring(2, 8).toUpperCase();
     try {
       await pool.query("BEGIN");
-      const result = await pool.query(
-        "INSERT INTO reservations (customer_id, property_id, sales_id, reservation_code, expires_at) VALUES ($1, $2, $3, $4, NOW() + interval '24 hours') RETURNING id",
+      await pool.query(
+        "INSERT INTO reservations (customer_id, property_id, sales_id, reservation_code, expires_at) VALUES ($1, $2, $3, $4, NOW() + interval '24 hours')",
         [customer_id, property_id, sales_id, code]
       );
       await pool.query("UPDATE properties SET status = 'Giữ chỗ' WHERE id = $1", [property_id]);
       await pool.query("COMMIT");
       res.json({ success: true, reservationCode: code });
-    } catch (e) { await pool.query("ROLLBACK"); res.status(500).send(e); }
+    } catch (e) { await pool.query("ROLLBACK"); res.status(500).send("Reservation Error"); }
   });
 
-  // --- STATS ---
   app.get("/api/stats", async (req, res) => {
     try {
       const revenue = await pool.query("SELECT COALESCE(SUM(total_value), 0) as total FROM contracts WHERE status = 'Completed'");
@@ -213,65 +231,55 @@ async function startServer() {
         totalRevenue: parseFloat(revenue.rows[0].total),
         newCustomers: parseInt(customers.rows[0].count),
         propertiesForSale: parseInt(properties.rows[0].count),
-        conversionRate: 0 // Logic tính sau
+        conversionRate: 0 
       });
     } catch (err) { res.status(500).send("Stats Error"); }
   });
 
-// --- VITE SETUP NÂNG CAO ĐỂ SỬA LỖI MIME TYPE ---
-const vite = await createViteServer({
-  server: { 
-    middlewareMode: true,
-    hmr: { server: undefined }
-  },
-  appType: "custom",
-  // Thêm cấu hình resolve để Vite ưu tiên các file react
-  resolve: {
-    extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json']
-  }
-});
+  // --- 2. VITE SETUP (Dành cho Giao diện) ---
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: "custom",
+  });
 
-// 1. CỰC KỲ QUAN TRỌNG: Phải đặt middleware này lên ĐẦU TIÊN, trên cả app.use(express.json())
-app.use(vite.middlewares);
+  // Sử dụng Vite middleware
+  app.use(vite.middlewares);
 
-// 2. Ép kiểu MIME type thủ công cho các file nguồn (Nếu Vite middleware bị bỏ qua)
-app.use((req, res, next) => {
-  if (req.url.endsWith('.tsx') || req.url.endsWith('.ts')) {
-    res.setHeader('Content-Type', 'application/javascript');
-  }
-  next();
-});
+  // Catch-all route để render React App
+  app.use("*", async (req, res, next) => {
+    const url = req.originalUrl;
+    if (url.startsWith('/api')) return next();
 
-// ... các route API của bạn giữ nguyên ...
+    try {
+      let template = `
+        <!DOCTYPE html>
+        <html lang="vi">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>Quản lý Bất Động Sản</title>
+          </head>
+          <body>
+            <div id="root"></div>
+            <script type="module" src="/src/main.tsx"></script>
+          </body>
+        </html>`;
 
-app.use("*", async (req, res, next) => {
-  const url = req.originalUrl;
-  if (url.startsWith('/api')) return next();
+      template = await vite.transformIndexHtml(url, template);
+      res.status(200).set({ "Content-Type": "text/html" }).end(template);
+    } catch (e: any) {
+      vite.ssrFixStacktrace(e);
+      next(e);
+    }
+  });
 
-  try {
-    let template = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8" />
-          <title>Quản lý Bất Động Sản</title>
-        </head>
-        <body>
-          <div id="root"></div>
-          <script type="module" src="/src/main.tsx"></script>
-        </body>
-      </html>`;
-
-    // Vite sẽ "nhai" cái template này và biến /src/main.tsx thành mã JS xịn
-    template = await vite.transformIndexHtml(url, template);
-    res.status(200).set({ "Content-Type": "text/html" }).end(template);
-  } catch (e) {
-    vite.ssrFixStacktrace(e as Error);
-    next(e);
-  }
-});
   const port = process.env.PORT || 3000;
-  app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
+  app.listen(port, () => {
+    console.log(`🚀 Server đang chạy tại: http://localhost:${port}`);
+    console.log(`📡 Chế độ: ${isLocal ? 'Local' : 'Railway/Production'}`);
+  });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("🔥 Server sập lúc khởi động:", err);
+});
