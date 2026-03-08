@@ -218,45 +218,52 @@ async function startServer() {
     } catch (err) { res.status(500).send("Stats Error"); }
   });
 
-// --- VITE SETUP CHUẨN CHO RAILWAY ---
+// --- VITE SETUP NÂNG CAO ĐỂ SỬA LỖI MIME TYPE ---
 const vite = await createViteServer({
   server: { 
     middlewareMode: true,
-    hmr: { server: undefined } // Tránh xung đột cổng trên Railway
+    hmr: { server: undefined }
   },
   appType: "custom",
+  // Thêm cấu hình resolve để Vite ưu tiên các file react
+  resolve: {
+    extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json']
+  }
 });
 
-// 1. Phải để Vite Middleware lên TRƯỚC các route khác
+// 1. CỰC KỲ QUAN TRỌNG: Phải đặt middleware này lên ĐẦU TIÊN, trên cả app.use(express.json())
 app.use(vite.middlewares);
 
-// 2. Route phục vụ Giao diện
+// 2. Ép kiểu MIME type thủ công cho các file nguồn (Nếu Vite middleware bị bỏ qua)
+app.use((req, res, next) => {
+  if (req.url.endsWith('.tsx') || req.url.endsWith('.ts')) {
+    res.setHeader('Content-Type', 'application/javascript');
+  }
+  next();
+});
+
+// ... các route API của bạn giữ nguyên ...
+
 app.use("*", async (req, res, next) => {
   const url = req.originalUrl;
-
-  // Nếu là yêu cầu API thì bỏ qua để Express xử lý bên trên
   if (url.startsWith('/api')) return next();
 
   try {
-    // HTML chuẩn để Vite có thể "Inject" React vào
     let template = `
       <!DOCTYPE html>
-      <html lang="en">
+      <html>
         <head>
           <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <title>Quản lý Bất Động Sản</title>
         </head>
         <body>
           <div id="root"></div>
           <script type="module" src="/src/main.tsx"></script>
         </body>
-      </html>
-    `;
+      </html>`;
 
-    // CỰC KỲ QUAN TRỌNG: Vite biến đổi HTML để nó biết đường dịch /src/main.tsx
+    // Vite sẽ "nhai" cái template này và biến /src/main.tsx thành mã JS xịn
     template = await vite.transformIndexHtml(url, template);
-
     res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (e) {
     vite.ssrFixStacktrace(e as Error);
