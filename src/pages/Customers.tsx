@@ -177,7 +177,12 @@ export const Customers = ({ user }: CustomersProps) => {
   const handleRequestOwnership = async () => {
     if (!duplicateCustomer || !user) return;
     setLoading(true);
-    const res = await api.createRequest(duplicateCustomer.id, user.id, formData);
+    const res = await api.createRequest({
+      customer_id: duplicateCustomer.id,
+      request_by: user.id,
+      new_data: formData,
+      type: 'Ownership'
+    });
     if (res.success) {
       setNotification({ message: 'Yêu cầu phân quyền đã được gửi! Thông tin mới sẽ được cập nhật sau khi quản lý duyệt.', type: 'success' });
       setIsModalOpen(false);
@@ -209,7 +214,11 @@ export const Customers = ({ user }: CustomersProps) => {
           setNotification({ message: res.message || 'Lỗi khi xóa khách hàng', type: 'error' });
         }
       } else {
-        const res = await api.createRequest(deleteConfirmId, user.id, null, 'Deletion');
+        const res = await api.createRequest({
+          customer_id: deleteConfirmId,
+          request_by: user.id,
+          type: 'Deletion'
+        });
         if (res.success) {
           setNotification({ message: 'Yêu cầu xóa đã được gửi cho quản lý!', type: 'success' });
         } else {
