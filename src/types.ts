@@ -21,12 +21,14 @@ export interface Customer {
 
 export interface OwnershipRequest {
   id: number;
-  customer_id: number;
+  customer_id?: number;
   customer_name?: string;
+  property_id?: number;
+  property_title?: string;
   request_by: number;
   requester_name?: string;
   current_owner_name?: string;
-  type: 'Ownership' | 'Deletion';
+  type: 'Ownership' | 'Deletion' | 'PropertyUpdate';
   status: 'Pending' | 'Approved' | 'Rejected';
   new_data?: string;
   processed_by?: number;
