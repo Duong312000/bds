@@ -1,241 +1,149 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import Database from "better-sqlite3";
+import pg from "pg"; // Đổi từ better-sqlite3 sang pg
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database("realestate.db");
-db.exec("PRAGMA foreign_keys = ON;");
+// KẾT NỐI POSTGRESQL TRÊN RAILWAY
+const { Pool } = pg;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL, // Tự động lấy đường link bạn đã cấp trên Railway
+  ssl: {
+    rejectUnauthorized: false // Bắt buộc phải có để Railway cho phép kết nối
+  }
+});
 
-// Initialize Database
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password TEXT,
-    role TEXT,
-    approved INTEGER DEFAULT 1
-  );
-
-  CREATE TABLE IF NOT EXISTS customers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fullName TEXT,
-    phoneNumber TEXT,
-    email TEXT,
-    address TEXT,
-    nationalId TEXT,
-    status TEXT DEFAULT 'Mới',
-    owner_id INTEGER,
-    createdBy INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(owner_id) REFERENCES users(id),
-    FOREIGN KEY(createdBy) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER,
-    request_by INTEGER,
-    type TEXT DEFAULT 'Ownership',
-    status TEXT DEFAULT 'Pending',
-    new_data TEXT,
-    processed_by INTEGER,
-    processed_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(customer_id) REFERENCES customers(id),
-    FOREIGN KEY(request_by) REFERENCES users(id),
-    FOREIGN KEY(processed_by) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS properties (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    type TEXT DEFAULT 'Chung cư',
-    price REAL,
-    area REAL,
-    location TEXT,
-    status TEXT DEFAULT 'Còn trống',
-    image_url TEXT,
-    description TEXT,
-    listing_type TEXT DEFAULT 'Bán'
-  );
-
-  CREATE TABLE IF NOT EXISTS activities (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type TEXT,
-    content TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS reservations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER,
-    property_id INTEGER,
-    sales_id INTEGER,
-    reservation_code TEXT UNIQUE,
-    status TEXT DEFAULT 'Active',
-    expires_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(customer_id) REFERENCES customers(id),
-    FOREIGN KEY(property_id) REFERENCES properties(id),
-    FOREIGN KEY(sales_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS deposits (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    reservation_id INTEGER,
-    customer_id INTEGER,
-    property_id INTEGER,
-    amount REAL,
-    status TEXT DEFAULT 'Pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(reservation_id) REFERENCES reservations(id),
-    FOREIGN KEY(customer_id) REFERENCES customers(id),
-    FOREIGN KEY(property_id) REFERENCES properties(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS contracts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER,
-    property_id INTEGER,
-    deposit_id INTEGER,
-    total_value REAL,
-    status TEXT DEFAULT 'Draft',
-    file_url TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(customer_id) REFERENCES customers(id),
-    FOREIGN KEY(property_id) REFERENCES properties(id),
-    FOREIGN KEY(deposit_id) REFERENCES deposits(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS payments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    contract_id INTEGER,
-    amount REAL,
-    due_date TEXT,
-    status TEXT DEFAULT 'Chưa thanh toán',
-    invoice_url TEXT,
-    FOREIGN KEY(contract_id) REFERENCES contracts(id)
-  );
-`);
-
-try {
-  db.prepare("ALTER TABLE users ADD COLUMN approved INTEGER DEFAULT 1").run();
-} catch (e) {}
-
-// Migration: Add 'type' column to properties if it doesn't exist
-try {
-  db.prepare("ALTER TABLE properties ADD COLUMN type TEXT DEFAULT 'Chung cư'").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE activities ADD COLUMN type TEXT").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE requests ADD COLUMN processed_by INTEGER").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE requests ADD COLUMN processed_at DATETIME").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE requests ADD COLUMN new_data TEXT").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE requests ADD COLUMN type TEXT DEFAULT 'Ownership'").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE requests ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE contracts ADD COLUMN deposit_id INTEGER").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE contracts ADD COLUMN file_url TEXT").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE contracts DROP COLUMN deposit").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE contracts DROP COLUMN installments").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE customers ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE customers RENAME COLUMN createdDate TO created_at").run();
-} catch (e) {}
-
-  // Migration: Rename old customer columns to new names if they exist
+// Khởi tạo Database
+async function initializeDB() {
   try {
-    db.prepare("ALTER TABLE customers RENAME COLUMN name TO fullName").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers RENAME COLUMN phone TO phoneNumber").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN createdDate DATETIME DEFAULT CURRENT_TIMESTAMP").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN owner_id INTEGER").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN createdBy INTEGER").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN address TEXT").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN email TEXT").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN nationalId TEXT").run();
-  } catch (e) {}
+    // 1. TẠO BẢNG (Chuyển AUTOINCREMENT thành SERIAL chuẩn Postgres)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT,
+        role TEXT,
+        approved INTEGER DEFAULT 1
+      );
 
-try {
-  db.prepare("ALTER TABLE properties ADD COLUMN description TEXT").run();
-} catch (e) {}
+      CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        fullName TEXT,
+        phoneNumber TEXT,
+        email TEXT,
+        address TEXT,
+        nationalId TEXT,
+        status TEXT DEFAULT 'Mới',
+        owner_id INTEGER,
+        createdBy INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
 
-try {
-  db.prepare("ALTER TABLE properties ADD COLUMN listing_type TEXT DEFAULT 'Bán'").run();
-} catch (e) {}
+      CREATE TABLE IF NOT EXISTS requests (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER,
+        request_by INTEGER,
+        type TEXT DEFAULT 'Ownership',
+        status TEXT DEFAULT 'Pending',
+        new_data TEXT,
+        processed_by INTEGER,
+        processed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
 
-// Seed initial data if empty
-const userCount = db.prepare("SELECT count(*) as count FROM users").get() as { count: number };
-if (userCount.count === 0) {
-  db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, ?)").run("sales", "sales123", "sales");
-  db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, ?)").run("manager", "manager123", "manager");
-  db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, ?)").run("accountant", "accountant123", "accountant");
-  
-  db.prepare("INSERT INTO customers (fullName, phoneNumber, email, status) VALUES (?, ?, ?, ?)").run("Nguyễn Văn A", "0901234567", "vana@example.com", "Tiềm năng");
-  db.prepare("INSERT INTO customers (fullName, phoneNumber, email, status) VALUES (?, ?, ?, ?)").run("Trần Thị B", "0912345678", "thib@example.com", "Đã liên hệ");
-  
-  db.prepare("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
-    "Vinhomes Grand Park - Căn hộ S1.02", "Chung cư", 2500000000, 65, "Quận 9, TP.HCM", "Còn trống", "https://picsum.photos/seed/apartment1/800/600", "Bán"
-  );
-  db.prepare("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
-    "Biệt thự ven sông Sunshine City", "Biệt thự", 15000000000, 250, "Quận 7, TP.HCM", "Còn trống", "https://picsum.photos/seed/villa1/800/600", "Bán"
-  );
-  db.prepare("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
-    "Căn hộ Studio - Masteri Centre Point", "Chung cư", 12000000, 35, "Quận 9, TP.HCM", "Còn trống", "https://picsum.photos/seed/studio1/800/600", "Thuê"
-  );
+      CREATE TABLE IF NOT EXISTS properties (
+        id SERIAL PRIMARY KEY,
+        title TEXT,
+        type TEXT DEFAULT 'Chung cư',
+        price REAL,
+        area REAL,
+        location TEXT,
+        status TEXT DEFAULT 'Còn trống',
+        image_url TEXT,
+        description TEXT,
+        listing_type TEXT DEFAULT 'Bán'
+      );
 
-  db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("customer", "Khách hàng Nguyễn Văn A vừa đăng ký quan tâm dự án.");
-  db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("contract", "Hợp đồng #HD001 đã được tạo cho khách hàng Trần Thị B.");
+      CREATE TABLE IF NOT EXISTS activities (
+        id SERIAL PRIMARY KEY,
+        type TEXT,
+        content TEXT,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS reservations (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER,
+        property_id INTEGER,
+        sales_id INTEGER,
+        reservation_code TEXT UNIQUE,
+        status TEXT DEFAULT 'Active',
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS deposits (
+        id SERIAL PRIMARY KEY,
+        reservation_id INTEGER,
+        customer_id INTEGER,
+        property_id INTEGER,
+        amount REAL,
+        status TEXT DEFAULT 'Pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS contracts (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER,
+        property_id INTEGER,
+        deposit_id INTEGER,
+        total_value REAL,
+        status TEXT DEFAULT 'Draft',
+        file_url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS payments (
+        id SERIAL PRIMARY KEY,
+        contract_id INTEGER,
+        amount REAL,
+        due_date TEXT,
+        status TEXT DEFAULT 'Chưa thanh toán',
+        invoice_url TEXT
+      );
+    `);
+
+    // 2. KHỞI TẠO DỮ LIỆU MẪU (Dùng $1, $2 thay vì ? của SQLite)
+    const userCount = await pool.query("SELECT count(*) as count FROM users");
+    if (parseInt(userCount.rows[0].count) === 0) {
+      await pool.query("INSERT INTO users (username, password, role) VALUES ($1, $2, $3)", ["sales", "sales123", "sales"]);
+      await pool.query("INSERT INTO users (username, password, role) VALUES ($1, $2, $3)", ["manager", "manager123", "manager"]);
+      await pool.query("INSERT INTO users (username, password, role) VALUES ($1, $2, $3)", ["accountant", "accountant123", "accountant"]);
+      
+      await pool.query("INSERT INTO customers (fullName, phoneNumber, email, status) VALUES ($1, $2, $3, $4)", ["Nguyễn Văn A", "0901234567", "vana@example.com", "Tiềm năng"]);
+      await pool.query("INSERT INTO customers (fullName, phoneNumber, email, status) VALUES ($1, $2, $3, $4)", ["Trần Thị B", "0912345678", "thib@example.com", "Đã liên hệ"]);
+      
+      await pool.query("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", 
+        ["Vinhomes Grand Park - Căn hộ S1.02", "Chung cư", 2500000000, 65, "Quận 9, TP.HCM", "Còn trống", "https://picsum.photos/seed/apartment1/800/600", "Bán"]);
+      await pool.query("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", 
+        ["Biệt thự ven sông Sunshine City", "Biệt thự", 15000000000, 250, "Quận 7, TP.HCM", "Còn trống", "https://picsum.photos/seed/villa1/800/600", "Bán"]);
+      await pool.query("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", 
+        ["Căn hộ Studio - Masteri Centre Point", "Chung cư", 12000000, 35, "Quận 9, TP.HCM", "Còn trống", "https://picsum.photos/seed/studio1/800/600", "Thuê"]);
+
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["customer", "Khách hàng Nguyễn Văn A vừa đăng ký quan tâm dự án."]);
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["contract", "Hợp đồng #HD001 đã được tạo cho khách hàng Trần Thị B."]);
+    }
+    console.log("✅ Khởi tạo Database PostgreSQL thành công!");
+  } catch (error) {
+    console.error("❌ Lỗi khi khởi tạo Database:", error);
+  }
 }
+
+// Chạy hàm tạo bảng
+initializeDB();
 
 async function startServer() {
   const app = express();
