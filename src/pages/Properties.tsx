@@ -13,7 +13,9 @@ import {
   Clock,
   User as UserIcon,
   Search,
-  FileText
+  FileText,
+  Link as LinkIcon,
+  Upload
 } from 'lucide-react';
 import { api } from '../services/api';
 import { formatCurrency, cn } from '../lib/utils';
@@ -26,6 +28,9 @@ interface PropertiesProps {
 export const Properties = ({ user }: PropertiesProps) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEdit, setIsEdit] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
@@ -55,6 +60,25 @@ export const Properties = ({ user }: PropertiesProps) => {
     api.getProperties().then(setProperties);
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        setNotification({ message: 'File quá lớn! Vui lòng chọn ảnh dưới 2MB.', type: 'error' });
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({
+          ...formData,
+          image_url: reader.result as string
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const fetchCustomers = () => {
     api.getCustomers().then(setCustomers);
   };
@@ -66,33 +90,104 @@ export const Properties = ({ user }: PropertiesProps) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (user?.role !== 'manager' && user?.role !== 'admin' && user?.role !== 'sales') return;
+    if (!user) return;
+    
+    const isManager = user.role === 'manager' || user.role === 'admin';
+    const isSales = user.role === 'sales';
     
     setLoading(true);
     try {
-      const res = await fetch('/api/properties', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      if (isEdit) {
+        if (isManager) {
+          // Direct update
+          const res = await api.updateProperty(editingId!, {
+            ...formData,
+            price: Number(formData.price),
+            area: Number(formData.area)
+          });
+          if (res.success) {
+            setNotification({ message: 'Cập nhật bất động sản thành công!', type: 'success' });
+            setIsModalOpen(false);
+            fetchProperties();
+          } else {
+            setNotification({ message: 'Lỗi khi cập nhật', type: 'error' });
+          }
+        } else if (isSales) {
+          // Create update request
+          const res = await api.createRequest({
+            property_id: editingId!,
+            request_by: user.id,
+            type: 'PropertyUpdate',
+            new_data: {
+              ...formData,
+              price: Number(formData.price),
+              area: Number(formData.area)
+            }
+          });
+          if (res.success) {
+            setNotification({ message: 'Yêu cầu cập nhật đã được gửi cho quản lý phê duyệt!', type: 'success' });
+            setIsModalOpen(false);
+          } else {
+            setNotification({ message: res.message || 'Lỗi khi gửi yêu cầu', type: 'error' });
+          }
+        }
+      } else {
+        // Create new property
+        const res = await api.createProperty({
           ...formData,
           price: Number(formData.price),
           area: Number(formData.area)
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setNotification({ message: 'Thêm bất động sản thành công!', type: 'success' });
-        setIsModalOpen(false);
-        setFormData({ title: '', type: 'Chung cư', price: '', area: '', location: '', image_url: '', description: '', listing_type: 'Bán' });
-        fetchProperties();
-      } else {
-        setNotification({ message: 'Lỗi khi thêm bất động sản', type: 'error' });
+        });
+        if (res.success) {
+          setNotification({ message: 'Thêm bất động sản thành công!', type: 'success' });
+          setIsModalOpen(false);
+          setFormData({ title: '', type: 'Chung cư', price: '', area: '', location: '', image_url: '', description: '', listing_type: 'Bán' });
+          fetchProperties();
+        } else {
+          setNotification({ message: 'Lỗi khi thêm bất động sản', type: 'error' });
+        }
       }
     } catch (error) {
-      console.error('Error adding property:', error);
+      console.error('Error processing property:', error);
       setNotification({ message: 'Có lỗi xảy ra khi kết nối máy chủ', type: 'error' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!user) return;
+    const isManager = user.role === 'manager' || user.role === 'admin';
+    
+    setLoading(true);
+    try {
+      if (isManager) {
+        const res = await api.deleteProperty(id);
+        if (res.success) {
+          setNotification({ message: 'Xóa bất động sản thành công!', type: 'success' });
+          fetchProperties();
+        } else {
+          setNotification({ message: 'Lỗi khi xóa', type: 'error' });
+        }
+      } else {
+        // Sales request deletion
+        const res = await api.createRequest({
+          property_id: id,
+          request_by: user.id,
+          type: 'Deletion'
+        });
+        if (res.success) {
+          setNotification({ message: 'Yêu cầu xóa đã được gửi cho quản lý phê duyệt!', type: 'success' });
+        } else {
+          setNotification({ message: res.message || 'Lỗi khi gửi yêu cầu', type: 'error' });
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting property:', error);
+      setNotification({ message: 'Có lỗi xảy ra', type: 'error' });
+    } finally {
+      setLoading(false);
+      setDeleteConfirmId(null);
     }
   };
 
@@ -134,7 +229,12 @@ export const Properties = ({ user }: PropertiesProps) => {
         </div>
         {(user?.role === 'manager' || user?.role === 'admin' || user?.role === 'sales') && (
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setIsEdit(false);
+              setEditingId(null);
+              setFormData({ title: '', type: 'Chung cư', price: '', area: '', location: '', image_url: '', description: '', listing_type: 'Bán' });
+              setIsModalOpen(true);
+            }}
             className="px-4 py-2 bg-blue-600 text-white rounded-xl flex items-center font-medium hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20"
           >
             <Plus className="w-4 h-4 mr-2" /> Thêm dự án
@@ -149,6 +249,37 @@ export const Properties = ({ user }: PropertiesProps) => {
         )}>
           {notification.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
           <span className="font-medium">{notification.message}</span>
+        </div>
+      )}
+
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mb-6">
+              <ImageIcon className="w-8 h-8 text-red-600" />
+            </div>
+            <h3 className="text-2xl font-bold text-slate-900 mb-2">Xác nhận xóa?</h3>
+            <p className="text-slate-600 mb-8">
+              {user?.role === 'manager' || user?.role === 'admin'
+                ? "Bạn có chắc chắn muốn xóa bất động sản này? Hành động này không thể hoàn tác."
+                : "Bạn có muốn gửi yêu cầu xóa bất động sản này cho quản lý phê duyệt?"}
+            </p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 px-6 py-3 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Hủy
+              </button>
+              <button 
+                onClick={() => handleDelete(deleteConfirmId)}
+                disabled={loading}
+                className="flex-1 px-6 py-3 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-200 disabled:opacity-50"
+              >
+                {loading ? "Đang xử lý..." : "Xác nhận"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -183,6 +314,41 @@ export const Properties = ({ user }: PropertiesProps) => {
                   {p.listing_type}
                 </div>
               </div>
+              
+              {(user?.role === 'manager' || user?.role === 'admin' || user?.role === 'sales') && (
+                <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEdit(true);
+                      setEditingId(p.id);
+                      setFormData({
+                        title: p.title,
+                        type: p.type,
+                        price: String(p.price),
+                        area: String(p.area),
+                        location: p.location,
+                        image_url: p.image_url || '',
+                        description: p.description || '',
+                        listing_type: p.listing_type as any
+                      });
+                      setIsModalOpen(true);
+                    }}
+                    className="p-2 bg-white/90 backdrop-blur-sm text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-lg"
+                  >
+                    <FileText className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteConfirmId(p.id);
+                    }}
+                    className="p-2 bg-white/90 backdrop-blur-sm text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-lg"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
             <div className="p-5">
               <h3 className="text-lg font-bold text-slate-900 mb-1 line-clamp-1">{p.title}</h3>
@@ -376,7 +542,7 @@ export const Properties = ({ user }: PropertiesProps) => {
                 <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/20">
                   <Building2 className="w-5 h-5 text-white" />
                 </div>
-                <h3 className="text-xl font-bold text-slate-900">Thêm bất động sản mới</h3>
+                <h3 className="text-xl font-bold text-slate-900">{isEdit ? 'Chỉnh sửa bất động sản' : 'Thêm bất động sản mới'}</h3>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
                 <X className="w-5 h-5 text-slate-500" />
@@ -472,17 +638,46 @@ export const Properties = ({ user }: PropertiesProps) => {
                 </div>
 
                 <div className="col-span-2 space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-1">URL Hình ảnh</label>
-                  <div className="relative">
-                    <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 transition-all"
-                      placeholder="https://..."
-                      value={formData.image_url}
-                      onChange={(e) => setFormData({...formData, image_url: e.target.value})}
-                    />
+                  <label className="text-xs font-bold text-slate-500 uppercase ml-1">Hình ảnh dự án</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="relative">
+                      <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 transition-all"
+                        placeholder="Dán link ảnh (https://...)"
+                        value={formData.image_url}
+                        onChange={(e) => setFormData({...formData, image_url: e.target.value})}
+                      />
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        id="file-upload"
+                        onChange={handleFileUpload}
+                      />
+                      <label 
+                        htmlFor="file-upload"
+                        className="flex items-center justify-center w-full px-4 py-2.5 bg-blue-50 text-blue-600 border-2 border-dashed border-blue-200 rounded-xl text-sm font-bold cursor-pointer hover:bg-blue-100 transition-all"
+                      >
+                        <Upload className="w-4 h-4 mr-2" /> Tải ảnh từ máy
+                      </label>
+                    </div>
                   </div>
+                  {formData.image_url && (
+                    <div className="mt-2 relative w-24 h-24 rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                      <img src={formData.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <button 
+                        type="button"
+                        onClick={() => setFormData({...formData, image_url: ''})}
+                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-lg shadow-lg hover:bg-red-600 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="col-span-2 space-y-1.5">
                   <label className="text-xs font-bold text-slate-500 uppercase ml-1">Mô tả chi tiết</label>
@@ -508,7 +703,7 @@ export const Properties = ({ user }: PropertiesProps) => {
                   disabled={loading}
                   className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20 disabled:opacity-50"
                 >
-                  {loading ? 'Đang xử lý...' : 'Lưu dự án'}
+                  {loading ? 'Đang xử lý...' : (isEdit ? (user?.role === 'sales' ? 'Gửi yêu cầu cập nhật' : 'Cập nhật dự án') : 'Lưu dự án')}
                 </button>
               </div>
             </form>
