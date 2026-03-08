@@ -1,24 +1,16 @@
+import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    // Cho phép host cụ thể của Railway hoặc dùng 'all' để linh hoạt
-    allowedHosts: [
-      'bds-production-69c8.up.railway.app', // Host hiện tại của bạn
-      '.railway.app' // Cho phép tất cả các sub-domain của railway
-    ],
-    // Nếu bạn muốn mở hoàn toàn (tiện nhưng ít bảo mật hơn một chút):
-    // allowedHosts: 'all'
-  },
-});
-export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, '.', '');
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(), 
+      tailwindcss()
+    ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
@@ -28,8 +20,12 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      // 1. Sửa lỗi Blocked Host trên Railway
+      allowedHosts: [
+        'bds-production-69c8.up.railway.app',
+        '.railway.app'
+      ],
+      // 2. Cấu hình HMR
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };
