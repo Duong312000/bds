@@ -76,11 +76,20 @@ export const Login = ({ onLogin }: LoginProps) => {
       {/* Header Logo */}
       <header className="relative z-20 p-6 md:px-12">
         <div className="flex items-center space-x-3">
-          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-xl overflow-hidden p-1.5">
-             <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-              <path d="M50 10L12 40V75C12 83.2843 18.7157 90 27 90H73C81.2843 90 88 83.2843 88 75V40L50 10Z" fill="#007AFF"/>
-              <path d="M50 25L25 45V75C25 77.7614 27.2386 80 30 80H70C72.7614 80 75 77.7614 75 75V45L50 25Z" fill="white"/>
-              <path d="M35 58C35 66.2843 41.7157 73 50 73C58.2843 73 65 66.2843 65 58" stroke="#007AFF" stroke-width="10" stroke-linecap="round"/>
+          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-xl overflow-hidden p-1.5 border border-white/20">
+            <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-sm">
+              <defs>
+                <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#3b82f6" />
+                  <stop offset="100%" stopColor="#1d4ed8" />
+                </linearGradient>
+              </defs>
+              {/* Hình khối nhà cách điệu hiện đại */}
+              <path d="M50 5L15 35V85H85V35L50 5Z" fill="url(#logoGrad)"/>
+              <path d="M50 20L25 40V80H75V40L50 20Z" fill="white"/>
+              <rect x="42" y="55" width="16" height="25" fill="#3b82f6" rx="2"/>
+              {/* Điểm nhấn mái nhà */}
+              <path d="M15 35L50 5L85 35" stroke="#2563eb" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
             </svg>
           </div>
           <div className="flex flex-col">
