@@ -194,12 +194,12 @@ export const Login = ({ onLogin }: LoginProps) => {
             </div>
 
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-4 bg-brand-blue hover:bg-brand-blue/90 text-white font-bold rounded transition-colors active:scale-[0.99] disabled:opacity-50 mt-4 shadow-lg shadow-brand-blue/20"
-            >
-              {loading ? 'Đang xử lý...' : isRegister ? 'Đăng ký' : 'Đăng nhập'}
-            </button>
+  type="submit"
+  disabled={loading}
+  className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded transition-colors active:scale-[0.99] disabled:opacity-50 mt-4 shadow-lg shadow-blue-900/20"
+>
+  {loading ? 'Đang xử lý...' : isRegister ? 'Đăng ký' : 'Đăng nhập'}
+</button>
 
             <div className="flex items-center justify-between text-[#b3b3b3] text-sm pt-2">
               <label className="flex items-center cursor-pointer">
