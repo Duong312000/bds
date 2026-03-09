@@ -76,7 +76,7 @@ export const CreateContract = () => {
           <div key={s} className="relative z-10 flex flex-col items-center">
             <div className={cn(
               "w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all duration-300",
-              step >= s ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "bg-white border-2 border-slate-200 text-slate-400"
+              step === s ? "bg-blue-600 text-white shadow-lg scale-110" : step > s ? "bg-emerald-500 text-white" : "bg-white border-2 border-slate-200 text-slate-400"
             )}>
               {s}
             </div>
@@ -143,7 +143,7 @@ export const CreateContract = () => {
                       selectedProperty === p.id ? "border-blue-600 bg-blue-50" : "border-slate-100 hover:border-slate-200"
                     )}
                   >
-                    <img src={p.image_url} className="w-20 h-20 rounded-lg object-cover mr-4" referrerPolicy="no-referrer" />
+                    className="w-24 h-24 rounded-xl object-cover aspect-square mr-4 shadow-sm" referrerPolicy="no-referrer" />
                     <div className="flex-1">
                       <p className="font-bold text-slate-900">{p.title}</p>
                       <p className="text-sm text-slate-500">{p.location}</p>
@@ -218,7 +218,7 @@ export const CreateContract = () => {
               <div className="p-6 bg-slate-50 rounded-2xl space-y-4">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Khách hàng:</span>
-                  <span className="font-bold text-slate-900">{customers.find(c => c.id === selectedCustomer)?.fullName}</span>
+                  <span className="font-bold text-blue-600">{customers.find(c => c.id === selectedCustomer)?.fullName}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Bất động sản:</span>
@@ -254,7 +254,7 @@ export const CreateContract = () => {
             <button
               disabled={(step === 1 && !selectedCustomer) || (step === 2 && !selectedProperty)}
               onClick={() => setStep(s => s + 1)}
-              className="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 disabled:opacity-50"
+              className="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
               Tiếp tục
             </button>
