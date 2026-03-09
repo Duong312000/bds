@@ -153,7 +153,7 @@ export const Dashboard = () => {
             </ResponsiveContainer>
           </div>
           <div className="mt-4 space-y-2">
-            {stats.propertyTypeDistribution.map((item, idx) => (
+            {stats?.propertyTypeDistribution.map((item, idx) => (
               <div key={item.name} className="flex justify-between items-center text-sm">
                 <div className="flex items-center">
                   <div className="w-2 h-2 rounded-full mr-2" style={{backgroundColor: COLORS[idx % COLORS.length]}} />
