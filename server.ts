@@ -169,6 +169,61 @@ async function startServer() {
     }
   });
 
+  // 1. Lấy danh sách Bất động sản
+  app.get("/api/properties", async (req, res) => {
+    try {
+      const result = await pool.query("SELECT * FROM properties ORDER BY id DESC");
+      res.json(result.rows);
+    } catch (err) {
+      console.error("Error fetching properties:", err);
+      res.status(500).json({ success: false, message: "Lỗi khi tải danh sách dự án" });
+    }
+  });
+
+  // 2. Thêm mới Bất động sản
+  app.post("/api/properties", async (req, res) => {
+    const { title, type, price, area, location, image_url, description, listing_type } = req.body;
+    try {
+      await pool.query(`
+        INSERT INTO properties (title, type, price, area, location, status, image_url, description, listing_type)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `, [title, type || 'Chung cư', price, area, location, 'Còn trống', image_url, description, listing_type || 'Bán']);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error adding property:", err);
+      res.status(500).json({ success: false, message: "Lỗi khi thêm dự án" });
+    }
+  });
+
+  // 3. Cập nhật Bất động sản (Bao gồm cả cập nhật ảnh)
+  app.put("/api/properties/:id", async (req, res) => {
+    const { id } = req.params;
+    const { title, type, price, area, location, status, image_url, description, listing_type } = req.body;
+    try {
+      await pool.query(`
+        UPDATE properties 
+        SET title = $1, type = $2, price = $3, area = $4, location = $5, status = $6, image_url = $7, description = $8, listing_type = $9
+        WHERE id = $10
+      `, [title, type, price, area, location, status, image_url, description, listing_type, id]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error updating property:", err);
+      res.status(500).json({ success: false, message: "Lỗi khi cập nhật dự án" });
+    }
+  });
+
+  // 4. Xóa Bất động sản
+  app.delete("/api/properties/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      await pool.query("DELETE FROM properties WHERE id = $1", [id]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting property:", err);
+      res.status(500).json({ success: false, message: "Lỗi khi xóa dự án (có thể do đang có hợp đồng dính liền)" });
+    }
+  });
+
   // API Lấy danh sách khách hàng
   app.get("/api/customers", async (req, res) => {
     try {
