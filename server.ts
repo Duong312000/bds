@@ -1,254 +1,211 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import Database from "better-sqlite3";
+import pg from "pg";
 import path from "path";
 import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database("realestate.db");
-db.exec("PRAGMA foreign_keys = ON;");
+// KẾT NỐI POSTGRESQL TRÊN RAILWAY
+if (!process.env.DATABASE_URL) {
+  console.error("❌ ERROR: Missing DATABASE_URL in Environment Variables!");
+  process.exit(1);
+}
 
-// Initialize Database
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password TEXT,
-    role TEXT,
-    approved INTEGER DEFAULT 1
-  );
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
-  CREATE TABLE IF NOT EXISTS customers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fullName TEXT,
-    phoneNumber TEXT,
-    email TEXT,
-    address TEXT,
-    nationalId TEXT,
-    status TEXT DEFAULT 'Mới',
-    owner_id INTEGER,
-    createdBy INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(owner_id) REFERENCES users(id),
-    FOREIGN KEY(createdBy) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER,
-    request_by INTEGER,
-    type TEXT DEFAULT 'Ownership',
-    status TEXT DEFAULT 'Pending',
-    new_data TEXT,
-    processed_by INTEGER,
-    processed_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(customer_id) REFERENCES customers(id),
-    FOREIGN KEY(request_by) REFERENCES users(id),
-    FOREIGN KEY(processed_by) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS properties (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    type TEXT DEFAULT 'Chung cư',
-    price REAL,
-    area REAL,
-    location TEXT,
-    status TEXT DEFAULT 'Còn trống',
-    image_url TEXT,
-    description TEXT,
-    listing_type TEXT DEFAULT 'Bán'
-  );
-
-  CREATE TABLE IF NOT EXISTS activities (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type TEXT,
-    content TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS reservations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER,
-    property_id INTEGER,
-    sales_id INTEGER,
-    reservation_code TEXT UNIQUE,
-    status TEXT DEFAULT 'Active',
-    expires_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(customer_id) REFERENCES customers(id),
-    FOREIGN KEY(property_id) REFERENCES properties(id),
-    FOREIGN KEY(sales_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS deposits (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    reservation_id INTEGER,
-    customer_id INTEGER,
-    property_id INTEGER,
-    amount REAL,
-    status TEXT DEFAULT 'Pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(reservation_id) REFERENCES reservations(id),
-    FOREIGN KEY(customer_id) REFERENCES customers(id),
-    FOREIGN KEY(property_id) REFERENCES properties(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS contracts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER,
-    property_id INTEGER,
-    deposit_id INTEGER,
-    total_value REAL,
-    status TEXT DEFAULT 'Draft',
-    file_url TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(customer_id) REFERENCES customers(id),
-    FOREIGN KEY(property_id) REFERENCES properties(id),
-    FOREIGN KEY(deposit_id) REFERENCES deposits(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS payments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    contract_id INTEGER,
-    amount REAL,
-    due_date TEXT,
-    status TEXT DEFAULT 'Chưa thanh toán',
-    invoice_url TEXT,
-    FOREIGN KEY(contract_id) REFERENCES contracts(id)
-  );
-`);
-
-try {
-  db.prepare("ALTER TABLE users ADD COLUMN approved INTEGER DEFAULT 1").run();
-} catch (e) {}
-
-// Migration: Add 'type' column to properties if it doesn't exist
-try {
-  db.prepare("ALTER TABLE properties ADD COLUMN type TEXT DEFAULT 'Chung cư'").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE activities ADD COLUMN type TEXT").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE requests ADD COLUMN processed_by INTEGER").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE requests ADD COLUMN processed_at DATETIME").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE requests ADD COLUMN new_data TEXT").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE requests ADD COLUMN type TEXT DEFAULT 'Ownership'").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE requests ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE contracts ADD COLUMN deposit_id INTEGER").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE contracts ADD COLUMN file_url TEXT").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE contracts DROP COLUMN deposit").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE contracts DROP COLUMN installments").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE customers ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP").run();
-} catch (e) {}
-
-try {
-  db.prepare("ALTER TABLE customers RENAME COLUMN createdDate TO created_at").run();
-} catch (e) {}
-
-  // Migration: Rename old customer columns to new names if they exist
+// HÀM KHỞI TẠO VÀ MIGRATION DATABASE
+async function initDB() {
+  const client = await pool.connect();
   try {
-    db.prepare("ALTER TABLE customers RENAME COLUMN name TO fullName").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers RENAME COLUMN phone TO phoneNumber").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN createdDate DATETIME DEFAULT CURRENT_TIMESTAMP").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN owner_id INTEGER").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN createdBy INTEGER").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN address TEXT").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN email TEXT").run();
-  } catch (e) {}
-  try {
-    db.prepare("ALTER TABLE customers ADD COLUMN nationalId TEXT").run();
-  } catch (e) {}
+    await client.query("BEGIN");
+    
+    // Tạo bảng với chuẩn PostgreSQL (SERIAL PRIMARY KEY thay vì INTEGER PRIMARY KEY AUTOINCREMENT)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT,
+        role TEXT,
+        approved INTEGER DEFAULT 1
+      );
 
-try {
-  db.prepare("ALTER TABLE properties ADD COLUMN description TEXT").run();
-} catch (e) {}
+      CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        fullName TEXT,
+        phoneNumber TEXT,
+        email TEXT,
+        address TEXT,
+        nationalId TEXT,
+        status TEXT DEFAULT 'Mới',
+        owner_id INTEGER REFERENCES users(id),
+        createdBy INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
 
-try {
-  db.prepare("ALTER TABLE properties ADD COLUMN listing_type TEXT DEFAULT 'Bán'").run();
-} catch (e) {}
+      CREATE TABLE IF NOT EXISTS properties (
+        id SERIAL PRIMARY KEY,
+        title TEXT,
+        type TEXT DEFAULT 'Chung cư',
+        price REAL,
+        area REAL,
+        location TEXT,
+        status TEXT DEFAULT 'Còn trống',
+        image_url TEXT,
+        description TEXT,
+        listing_type TEXT DEFAULT 'Bán'
+      );
 
-// Seed initial data if empty
-const userCount = db.prepare("SELECT count(*) as count FROM users").get() as { count: number };
-if (userCount.count === 0) {
-  db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, ?)").run("sales", "sales123", "sales");
-  db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, ?)").run("manager", "manager123", "manager");
-  db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, ?)").run("accountant", "accountant123", "accountant");
-  
-  db.prepare("INSERT INTO customers (fullName, phoneNumber, email, status) VALUES (?, ?, ?, ?)").run("Nguyễn Văn A", "0901234567", "vana@example.com", "Tiềm năng");
-  db.prepare("INSERT INTO customers (fullName, phoneNumber, email, status) VALUES (?, ?, ?, ?)").run("Trần Thị B", "0912345678", "thib@example.com", "Đã liên hệ");
-  
-  db.prepare("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
-    "Vinhomes Grand Park - Căn hộ S1.02", "Chung cư", 2500000000, 65, "Quận 9, TP.HCM", "Còn trống", "https://picsum.photos/seed/apartment1/800/600", "Bán"
-  );
-  db.prepare("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
-    "Biệt thự ven sông Sunshine City", "Biệt thự", 15000000000, 250, "Quận 7, TP.HCM", "Còn trống", "https://picsum.photos/seed/villa1/800/600", "Bán"
-  );
-  db.prepare("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
-    "Căn hộ Studio - Masteri Centre Point", "Chung cư", 12000000, 35, "Quận 9, TP.HCM", "Còn trống", "https://picsum.photos/seed/studio1/800/600", "Thuê"
-  );
+      CREATE TABLE IF NOT EXISTS requests (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER REFERENCES customers(id),
+        property_id INTEGER REFERENCES properties(id),
+        request_by INTEGER REFERENCES users(id),
+        type TEXT DEFAULT 'Ownership',
+        status TEXT DEFAULT 'Pending',
+        new_data TEXT,
+        processed_by INTEGER REFERENCES users(id),
+        processed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
 
-  db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("customer", "Khách hàng Nguyễn Văn A vừa đăng ký quan tâm dự án.");
-  db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("contract", "Hợp đồng #HD001 đã được tạo cho khách hàng Trần Thị B.");
+      CREATE TABLE IF NOT EXISTS activities (
+        id SERIAL PRIMARY KEY,
+        type TEXT,
+        content TEXT,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS reservations (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER REFERENCES customers(id),
+        property_id INTEGER REFERENCES properties(id),
+        sales_id INTEGER REFERENCES users(id),
+        reservation_code TEXT UNIQUE,
+        status TEXT DEFAULT 'Active',
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS deposits (
+        id SERIAL PRIMARY KEY,
+        reservation_id INTEGER REFERENCES reservations(id),
+        customer_id INTEGER REFERENCES customers(id),
+        property_id INTEGER REFERENCES properties(id),
+        amount REAL,
+        status TEXT DEFAULT 'Pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS contracts (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER REFERENCES customers(id),
+        property_id INTEGER REFERENCES properties(id),
+        deposit_id INTEGER REFERENCES deposits(id),
+        total_value REAL,
+        status TEXT DEFAULT 'Draft',
+        file_url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS payments (
+        id SERIAL PRIMARY KEY,
+        contract_id INTEGER REFERENCES contracts(id),
+        amount REAL,
+        due_date TEXT,
+        status TEXT DEFAULT 'Chưa thanh toán',
+        invoice_url TEXT
+      );
+    `);
+
+    // Chạy các đoạn Migration (Thêm cột) y hệt code cũ của bạn
+    const migrations = [
+      "ALTER TABLE users ADD COLUMN approved INTEGER DEFAULT 1",
+      "ALTER TABLE properties ADD COLUMN type TEXT DEFAULT 'Chung cư'",
+      "ALTER TABLE activities ADD COLUMN type TEXT",
+      "ALTER TABLE requests ADD COLUMN property_id INTEGER",
+      "ALTER TABLE requests ADD COLUMN processed_by INTEGER",
+      "ALTER TABLE requests ADD COLUMN processed_at TIMESTAMP",
+      "ALTER TABLE requests ADD COLUMN new_data TEXT",
+      "ALTER TABLE requests ADD COLUMN type TEXT DEFAULT 'Ownership'",
+      "ALTER TABLE requests ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+      "ALTER TABLE contracts ADD COLUMN deposit_id INTEGER",
+      "ALTER TABLE contracts ADD COLUMN file_url TEXT",
+      "ALTER TABLE contracts DROP COLUMN deposit",
+      "ALTER TABLE contracts DROP COLUMN installments",
+      "ALTER TABLE customers ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+      "ALTER TABLE customers RENAME COLUMN createdDate TO created_at",
+      "ALTER TABLE customers RENAME COLUMN name TO fullName",
+      "ALTER TABLE customers RENAME COLUMN phone TO phoneNumber",
+      "ALTER TABLE customers ADD COLUMN createdDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+      "ALTER TABLE customers ADD COLUMN owner_id INTEGER",
+      "ALTER TABLE customers ADD COLUMN createdBy INTEGER",
+      "ALTER TABLE customers ADD COLUMN address TEXT",
+      "ALTER TABLE customers ADD COLUMN email TEXT",
+      "ALTER TABLE customers ADD COLUMN nationalId TEXT",
+      "ALTER TABLE properties ADD COLUMN description TEXT",
+      "ALTER TABLE properties ADD COLUMN listing_type TEXT DEFAULT 'Bán'"
+    ];
+
+    for (const sql of migrations) {
+      try { await client.query(sql); } catch (e) { /* Bỏ qua lỗi nếu cột đã tồn tại (giống code cũ) */ }
+    }
+
+    // Seed initial data if empty
+    const userCountResult = await client.query("SELECT count(*) as count FROM users");
+    const userCount = parseInt(userCountResult.rows[0].count);
+    
+    if (userCount === 0) {
+      await client.query("INSERT INTO users (username, password, role) VALUES ($1, $2, $3)", ["sales", "sales123", "sales"]);
+      await client.query("INSERT INTO users (username, password, role) VALUES ($1, $2, $3)", ["manager", "manager123", "manager"]);
+      await client.query("INSERT INTO users (username, password, role) VALUES ($1, $2, $3)", ["accountant", "accountant123", "accountant"]);
+      
+      await client.query("INSERT INTO customers (fullName, phoneNumber, email, status) VALUES ($1, $2, $3, $4)", ["Nguyễn Văn A", "0901234567", "vana@example.com", "Tiềm năng"]);
+      await client.query("INSERT INTO customers (fullName, phoneNumber, email, status) VALUES ($1, $2, $3, $4)", ["Trần Thị B", "0912345678", "thib@example.com", "Đã liên hệ"]);
+      
+      await client.query("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", [
+        "Vinhomes Grand Park - Căn hộ S1.02", "Chung cư", 2500000000, 65, "Quận 9, TP.HCM", "Còn trống", "https://picsum.photos/seed/apartment1/800/600", "Bán"
+      ]);
+      await client.query("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", [
+        "Biệt thự ven sông Sunshine City", "Biệt thự", 15000000000, 250, "Quận 7, TP.HCM", "Còn trống", "https://picsum.photos/seed/villa1/800/600", "Bán"
+      ]);
+      await client.query("INSERT INTO properties (title, type, price, area, location, status, image_url, listing_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", [
+        "Căn hộ Studio - Masteri Centre Point", "Chung cư", 12000000, 35, "Quận 9, TP.HCM", "Còn trống", "https://picsum.photos/seed/studio1/800/600", "Thuê"
+      ]);
+
+      await client.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["customer", "Khách hàng Nguyễn Văn A vừa đăng ký quan tâm dự án."]);
+      await client.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["contract", "Hợp đồng #HD001 đã được tạo cho khách hàng Trần Thị B."]);
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Lỗi khởi tạo DB:", err);
+  } finally {
+    client.release();
+  }
 }
 
 async function startServer() {
   const app = express();
-  
-  // Tăng giới hạn nhận JSON và URL-encoded lên 10MB để thoải mái chứa ảnh Base64
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ limit: '10mb', extended: true }));
+  app.use(express.json());
+
+  await initDB();
 
   // Auth API
-  app.post("/api/login", (req, res) => {
+  app.post("/api/login", async (req, res) => {
     const { username, password } = req.body;
     try {
-      const user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password) as any;
+      const result = await pool.query("SELECT * FROM users WHERE username = $1 AND password = $2", [username, password]);
+      const user = result.rows[0];
+      
       if (user) {
         if (user.approved === 0) {
           return res.json({ success: false, message: "Tài khoản đang chờ quản lý duyệt", pending: true });
@@ -262,17 +219,16 @@ async function startServer() {
     }
   });
 
-  app.post("/api/register", (req, res) => {
+  app.post("/api/register", async (req, res) => {
     const { username, password, role } = req.body;
     try {
-      // Validate allowed roles for registration
       const allowedRoles = ["sales", "accountant"];
       const finalRole = allowedRoles.includes(role) ? role : "sales";
       
-      const info = db.prepare("INSERT INTO users (username, password, role, approved) VALUES (?, ?, ?, ?)").run(username, password, finalRole, 0);
-      res.json({ success: true, userId: info.lastInsertRowid });
+      const info = await pool.query("INSERT INTO users (username, password, role, approved) VALUES ($1, $2, $3, $4) RETURNING id", [username, password, finalRole, 0]);
+      res.json({ success: true, userId: info.rows[0].id });
     } catch (err: any) {
-      if (err.message.includes("UNIQUE constraint failed")) {
+      if (err.message.includes("unique constraint")) {
         res.status(400).json({ success: false, message: "Tên đăng nhập đã tồn tại" });
       } else {
         res.status(500).json({ success: false, message: "Lỗi hệ thống" });
@@ -281,41 +237,42 @@ async function startServer() {
   });
 
   // Customers API
-  app.get("/api/customers", (req, res) => {
+  app.get("/api/customers", async (req, res) => {
     try {
-      const customers = db.prepare(`
+      const result = await pool.query(`
         SELECT c.*, u.username as owner_name 
         FROM customers c 
         LEFT JOIN users u ON c.owner_id = u.id 
         ORDER BY c.id DESC
-      `).all();
-      console.log(`Found ${customers.length} customers`);
-      res.json(customers);
+      `);
+      console.log(`Found ${result.rows.length} customers`);
+      res.json(result.rows);
     } catch (err) {
       console.error("Error fetching customers:", err);
       res.status(500).json({ success: false, message: "Lỗi khi tải danh sách khách hàng" });
     }
   });
 
-  app.get("/api/customers/check", (req, res) => {
+  app.get("/api/customers/check", async (req, res) => {
     const { nationalId, fullName } = req.query;
     let customer = null;
     
     if (nationalId && fullName) {
       const nId = String(nationalId).trim();
       const fName = String(fullName).trim();
-      customer = db.prepare(`
+      const result = await pool.query(`
         SELECT c.*, u.username as owner_name 
         FROM customers c 
         LEFT JOIN users u ON c.owner_id = u.id 
-        WHERE TRIM(c.nationalId) = ? AND TRIM(c.fullName) = ? COLLATE NOCASE
-      `).get(nId, fName);
+        WHERE TRIM(c.nationalId) = $1 AND TRIM(c.fullName) ILIKE $2
+      `, [nId, fName]);
+      customer = result.rows[0];
     }
     
     res.json({ exists: !!customer, customer });
   });
 
-  app.post("/api/customers", (req, res) => {
+  app.post("/api/customers", async (req, res) => {
     const { fullName, phoneNumber, email, address, nationalId, status, owner_id, createdBy } = req.body;
     
     // Server-side validation
@@ -342,70 +299,75 @@ async function startServer() {
 
     try {
       // Server-side duplicate check
-      const existing = db.prepare("SELECT id FROM customers WHERE TRIM(nationalId) = ? AND TRIM(fullName) = ? COLLATE NOCASE").get(trimmedCCCD, trimmedName);
-      if (existing) {
+      const checkResult = await pool.query("SELECT id FROM customers WHERE TRIM(nationalId) = $1 AND TRIM(fullName) ILIKE $2", [trimmedCCCD, trimmedName]);
+      if (checkResult.rows.length > 0) {
         return res.status(400).json({ success: false, message: "Khách hàng đã tồn tại trong hệ thống (trùng CCCD và Tên)" });
       }
 
-      const info = db.prepare(`
+      const info = await pool.query(`
         INSERT INTO customers (fullName, phoneNumber, email, address, nationalId, status, owner_id, createdBy) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(trimmedName, phoneNumber, email, address, trimmedCCCD, status || 'Mới', owner_id, createdBy);
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id
+      `, [trimmedName, phoneNumber, email, address, trimmedCCCD, status || 'Mới', owner_id, createdBy]);
       
       // Log activity
-      db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("customer", `Khách hàng mới ${trimmedName} đã được thêm vào hệ thống.`);
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["customer", `Khách hàng mới ${trimmedName} đã được thêm vào hệ thống.`]);
       
-      res.json({ success: true, customerId: info.lastInsertRowid });
+      res.json({ success: true, customerId: info.rows[0].id });
     } catch (err) {
       console.error("Error creating customer:", err);
       res.status(500).json({ success: false, message: "Lỗi khi thêm khách hàng" });
     }
   });
 
-  app.put("/api/customers/:id", (req, res) => {
+  app.put("/api/customers/:id", async (req, res) => {
     const { id } = req.params;
     const { fullName, phoneNumber, email, address, nationalId, status } = req.body;
-    db.prepare(`
+    await pool.query(`
       UPDATE customers 
-      SET fullName = ?, phoneNumber = ?, email = ?, address = ?, nationalId = ?, status = ? 
-      WHERE id = ?
-    `).run(fullName, phoneNumber, email, address, nationalId, status, id);
+      SET fullName = $1, phoneNumber = $2, email = $3, address = $4, nationalId = $5, status = $6 
+      WHERE id = $7
+    `, [fullName, phoneNumber, email, address, nationalId, status, id]);
     res.json({ success: true });
   });
 
   // Requests API
-  app.get("/api/requests", (req, res) => {
+  app.get("/api/requests", async (req, res) => {
     try {
-      const requests = db.prepare(`
+      const result = await pool.query(`
         SELECT 
           r.*, 
           c.fullName as customer_name, 
+          p.title as property_title,
           u_req.username as requester_name,
           u_owner.username as current_owner_name,
           u_proc.username as processor_name
         FROM requests r
-        JOIN customers c ON r.customer_id = c.id
+        LEFT JOIN customers c ON r.customer_id = c.id
+        LEFT JOIN properties p ON r.property_id = p.id
         JOIN users u_req ON r.request_by = u_req.id
         LEFT JOIN users u_owner ON c.owner_id = u_owner.id
         LEFT JOIN users u_proc ON r.processed_by = u_proc.id
         ORDER BY r.created_at DESC
-      `).all();
-      res.json(requests);
+      `);
+      res.json(result.rows);
     } catch (err) {
       console.error("Error fetching requests:", err);
       res.status(500).json({ success: false, message: "Lỗi khi tải danh sách yêu cầu" });
     }
   });
 
-  app.post("/api/requests", (req, res) => {
+  app.post("/api/requests", async (req, res) => {
     try {
-      const { customer_id, request_by, new_data, type } = req.body;
-      // Check if a pending request of same type already exists
-      const existing = db.prepare("SELECT * FROM requests WHERE customer_id = ? AND request_by = ? AND type = ? AND status = 'Pending'").get(customer_id, request_by, type || 'Ownership');
-      if (existing) {
+      const { customer_id, property_id, request_by, new_data, type } = req.body;
+      const checkResult = await pool.query("SELECT * FROM requests WHERE (customer_id = $1 OR property_id = $2) AND request_by = $3 AND type = $4 AND status = 'Pending'", 
+        [customer_id || null, property_id || null, request_by, type || 'Ownership']);
+      
+      if (checkResult.rows.length > 0) {
         return res.status(400).json({ success: false, message: "Yêu cầu đang chờ xử lý" });
       }
-      db.prepare("INSERT INTO requests (customer_id, request_by, new_data, type) VALUES (?, ?, ?, ?)").run(customer_id, request_by, new_data ? JSON.stringify(new_data) : null, type || 'Ownership');
+      
+      await pool.query("INSERT INTO requests (customer_id, property_id, request_by, new_data, type) VALUES ($1, $2, $3, $4, $5)", 
+        [customer_id || null, property_id || null, request_by, new_data ? JSON.stringify(new_data) : null, type || 'Ownership']);
       res.json({ success: true });
     } catch (err) {
       console.error("Error creating request:", err);
@@ -413,164 +375,186 @@ async function startServer() {
     }
   });
 
-  app.patch("/api/requests/:id", (req, res) => {
+  app.patch("/api/requests/:id", async (req, res) => {
+    const { id } = req.params;
+    const { status, processed_by } = req.body;
+    
+    const client = await pool.connect();
     try {
-      const { id } = req.params;
-      const { status, processed_by } = req.body;
+      await client.query("BEGIN");
       
-      const request = db.prepare("SELECT * FROM requests WHERE id = ?").get(id) as any;
-      if (!request) return res.status(404).json({ success: false, message: "Không tìm thấy yêu cầu" });
+      const reqResult = await client.query("SELECT * FROM requests WHERE id = $1", [id]);
+      const request = reqResult.rows[0];
+      
+      if (!request) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ success: false, message: "Không tìm thấy yêu cầu" });
+      }
 
-      db.transaction(() => {
-        db.prepare("UPDATE requests SET status = ?, processed_by = ?, processed_at = CURRENT_TIMESTAMP WHERE id = ?").run(status, processed_by, id);
+      await client.query("UPDATE requests SET status = $1, processed_by = $2, processed_at = CURRENT_TIMESTAMP WHERE id = $3", [status, processed_by, id]);
 
-        if (status === 'Approved') {
-          if (request.type === 'Deletion') {
-            // Delete related records first to avoid FOREIGN KEY constraint failed
-            // 1. Delete payments linked to contracts of this customer
-            db.prepare(`
-              DELETE FROM payments 
-              WHERE contract_id IN (SELECT id FROM contracts WHERE customer_id = ?)
-            `).run(request.customer_id);
-
-            // 2. Delete contracts
-            db.prepare("DELETE FROM contracts WHERE customer_id = ?").run(request.customer_id);
-
-            // 3. Delete ALL requests for this customer
-            db.prepare("DELETE FROM requests WHERE customer_id = ?").run(request.customer_id);
-            
-            // 4. Delete customer
-            db.prepare("DELETE FROM customers WHERE id = ?").run(request.customer_id);
-            db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("system", `Khách hàng #${request.customer_id} đã được xóa sau khi yêu cầu được phê duyệt bởi ${processed_by}.`);
-          } else {
-            // Transfer ownership and update data if new_data exists
-            if (request.new_data) {
-              try {
-                const newData = JSON.parse(request.new_data);
-                if (newData) {
-                  const { fullName, phoneNumber, email, address, nationalId, status: custStatus } = newData;
-                  db.prepare(`
-                    UPDATE customers 
-                    SET fullName = ?, phoneNumber = ?, email = ?, address = ?, nationalId = ?, status = ?, owner_id = ? 
-                    WHERE id = ?
-                  `).run(fullName, phoneNumber, email, address, nationalId, custStatus, request.request_by, request.customer_id);
-                } else {
-                  db.prepare("UPDATE customers SET owner_id = ? WHERE id = ?").run(request.request_by, request.customer_id);
-                }
-              } catch (err) {
-                console.error("Error updating customer from request data:", err);
-                db.prepare("UPDATE customers SET owner_id = ? WHERE id = ?").run(request.request_by, request.customer_id);
-              }
-            } else {
-              db.prepare("UPDATE customers SET owner_id = ? WHERE id = ?").run(request.request_by, request.customer_id);
-            }
-            db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("system", `Yêu cầu phân quyền khách hàng #${request.customer_id} đã được chấp nhận bởi ${processed_by}.`);
+      if (status === 'Approved') {
+        if (request.type === 'Deletion') {
+          if (request.customer_id) {
+            await client.query("DELETE FROM payments WHERE contract_id IN (SELECT id FROM contracts WHERE customer_id = $1)", [request.customer_id]);
+            await client.query("DELETE FROM contracts WHERE customer_id = $1", [request.customer_id]);
+            await client.query("DELETE FROM requests WHERE customer_id = $1", [request.customer_id]);
+            await client.query("DELETE FROM customers WHERE id = $1", [request.customer_id]);
+            await client.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Khách hàng #${request.customer_id} đã được xóa sau khi yêu cầu được phê duyệt bởi ${processed_by}.`]);
+          } else if (request.property_id) {
+            await client.query("DELETE FROM reservations WHERE property_id = $1", [request.property_id]);
+            await client.query("DELETE FROM deposits WHERE property_id = $1", [request.property_id]);
+            await client.query("DELETE FROM contracts WHERE property_id = $1", [request.property_id]);
+            await client.query("DELETE FROM requests WHERE property_id = $1", [request.property_id]);
+            await client.query("DELETE FROM properties WHERE id = $1", [request.property_id]);
+            await client.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Bất động sản #${request.property_id} đã được xóa sau khi yêu cầu được phê duyệt bởi ${processed_by}.`]);
           }
+        } else if (request.type === 'PropertyUpdate') {
+          if (request.new_data && request.property_id) {
+            const newData = JSON.parse(request.new_data);
+            await client.query(`
+              UPDATE properties 
+              SET title = $1, type = $2, price = $3, area = $4, location = $5, image_url = $6, description = $7, listing_type = $8
+              WHERE id = $9
+            `, [newData.title, newData.type, newData.price, newData.area, newData.location, newData.image_url, newData.description, newData.listing_type, request.property_id]);
+            await client.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Thông tin bất động sản #${request.property_id} đã được cập nhật sau khi yêu cầu được phê duyệt bởi ${processed_by}.`]);
+          }
+        } else {
+          if (request.new_data && request.customer_id) {
+            try {
+              const newData = JSON.parse(request.new_data);
+              if (newData) {
+                const { fullName, phoneNumber, email, address, nationalId, status: custStatus } = newData;
+                await client.query(`
+                  UPDATE customers 
+                  SET fullName = $1, phoneNumber = $2, email = $3, address = $4, nationalId = $5, status = $6, owner_id = $7 
+                  WHERE id = $8
+                `, [fullName, phoneNumber, email, address, nationalId, custStatus, request.request_by, request.customer_id]);
+              } else {
+                await client.query("UPDATE customers SET owner_id = $1 WHERE id = $2", [request.request_by, request.customer_id]);
+              }
+            } catch (err) {
+              await client.query("UPDATE customers SET owner_id = $1 WHERE id = $2", [request.request_by, request.customer_id]);
+            }
+          } else {
+            await client.query("UPDATE customers SET owner_id = $1 WHERE id = $2", [request.request_by, request.customer_id]);
+          }
+          await client.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Yêu cầu phân quyền khách hàng #${request.customer_id} đã được chấp nhận bởi ${processed_by}.`]);
         }
-      })();
-
+      }
+      
+      await client.query("COMMIT");
       res.json({ success: true });
     } catch (err) {
+      await client.query("ROLLBACK");
       console.error("Error updating request:", err);
       res.status(500).json({ success: false, message: "Lỗi khi xử lý yêu cầu: " + (err instanceof Error ? err.message : String(err)) });
+    } finally {
+      client.release();
     }
   });
 
   // Properties API
-  app.get("/api/properties", (req, res) => {
+  app.get("/api/properties", async (req, res) => {
     try {
-      const properties = db.prepare("SELECT * FROM properties").all();
-      res.json(properties);
+      const result = await pool.query("SELECT * FROM properties");
+      res.json(result.rows);
     } catch (err) {
       console.error("Error fetching properties:", err);
       res.status(500).json({ success: false, message: "Lỗi khi tải danh sách bất động sản" });
     }
   });
 
-  app.post("/api/properties", (req, res) => {
+  app.post("/api/properties", async (req, res) => {
     const { title, type, price, area, location, image_url, description, listing_type } = req.body;
     try {
-      db.prepare(`
+      await pool.query(`
         INSERT INTO properties (title, type, price, area, location, status, image_url, description, listing_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(title, type, price, area, location, 'Còn trống', image_url, description, listing_type || 'Bán');
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `, [title, type, price, area, location, 'Còn trống', image_url, description, listing_type || 'Bán']);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ success: false, message: "Lỗi khi thêm bất động sản" });
     }
   });
 
-  // 1. API ĐỂ XỬ LÝ KHI BẠN BẤM LƯU/CẬP NHẬT (Bao gồm cả ảnh mới)
-  app.put("/api/properties/:id", (req, res) => {
+  app.put("/api/properties/:id", async (req, res) => {
     const { id } = req.params;
-    const { title, type, price, area, location, status, image_url, description, listing_type } = req.body;
+    const { title, type, price, area, location, image_url, description, listing_type } = req.body;
     try {
-      db.prepare(`
+      await pool.query(`
         UPDATE properties 
-        SET title = ?, type = ?, price = ?, area = ?, location = ?, status = ?, image_url = ?, description = ?, listing_type = ?
-        WHERE id = ?
-      `).run(title, type, price, area, location, status, image_url, description, listing_type, id);
+        SET title = $1, type = $2, price = $3, area = $4, location = $5, image_url = $6, description = $7, listing_type = $8
+        WHERE id = $9
+      `, [title, type, price, area, location, image_url, description, listing_type, id]);
       res.json({ success: true });
     } catch (err) {
-      console.error("Error updating property:", err);
       res.status(500).json({ success: false, message: "Lỗi khi cập nhật bất động sản" });
     }
   });
 
-  // 2. API ĐỂ XỬ LÝ KHI BẠN BẤM XÓA DỰ ÁN
-  app.delete("/api/properties/:id", (req, res) => {
+  app.delete("/api/properties/:id", async (req, res) => {
     const { id } = req.params;
+    const client = await pool.connect();
     try {
-      db.prepare("DELETE FROM properties WHERE id = ?").run(id);
+      await client.query("BEGIN");
+      await client.query("DELETE FROM reservations WHERE property_id = $1", [id]);
+      await client.query("DELETE FROM deposits WHERE property_id = $1", [id]);
+      await client.query("DELETE FROM contracts WHERE property_id = $1", [id]);
+      await client.query("DELETE FROM requests WHERE property_id = $1", [id]);
+      await client.query("DELETE FROM properties WHERE id = $1", [id]);
+      await client.query("COMMIT");
       res.json({ success: true });
     } catch (err) {
-      console.error("Error deleting property:", err);
+      await client.query("ROLLBACK");
       res.status(500).json({ success: false, message: "Lỗi khi xóa bất động sản" });
+    } finally {
+      client.release();
     }
   });
 
   // Reservations API
-  app.get("/api/reservations", (req, res) => {
+  app.get("/api/reservations", async (req, res) => {
     try {
-      const reservations = db.prepare(`
+      const result = await pool.query(`
         SELECT r.*, cust.fullName as customer_name, p.title as property_title 
         FROM reservations r
         JOIN customers cust ON r.customer_id = cust.id
         JOIN properties p ON r.property_id = p.id
         ORDER BY r.created_at DESC
-      `).all();
-      res.json(reservations);
+      `);
+      res.json(result.rows);
     } catch (err) {
       res.status(500).json({ success: false, message: "Lỗi khi tải danh sách giữ chỗ" });
     }
   });
 
-  app.post("/api/reservations", (req, res) => {
+  app.post("/api/reservations", async (req, res) => {
     const { customer_id, property_id, sales_id } = req.body;
     try {
-      // Check if property is available
-      const property = db.prepare("SELECT status FROM properties WHERE id = ?").get(property_id) as any;
+      const propResult = await pool.query("SELECT status FROM properties WHERE id = $1", [property_id]);
+      const property = propResult.rows[0];
+      
       if (property.status !== 'Còn trống') {
         return res.status(400).json({ success: false, message: "Căn hộ này không còn trống để giữ chỗ" });
       }
 
       const reservationCode = "RES-" + Math.random().toString(36).substring(2, 8).toUpperCase();
       const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours reservation
+      expiresAt.setHours(expiresAt.getHours() + 24);
 
-      const info = db.prepare(`
+      const info = await pool.query(`
         INSERT INTO reservations (customer_id, property_id, sales_id, reservation_code, expires_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(customer_id, property_id, sales_id, reservationCode, expiresAt.toISOString());
+        VALUES ($1, $2, $3, $4, $5) RETURNING id
+      `, [customer_id, property_id, sales_id, reservationCode, expiresAt.toISOString()]);
 
-      // Update property status
-      db.prepare("UPDATE properties SET status = 'Giữ chỗ' WHERE id = ?").run(property_id);
+      await pool.query("UPDATE properties SET status = 'Giữ chỗ' WHERE id = $1", [property_id]);
 
-      // Log activity
-      const customer = db.prepare("SELECT fullName FROM customers WHERE id = ?").get(customer_id) as any;
-      db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("system", `Sales đã tạo phiếu giữ chỗ ${reservationCode} cho khách hàng ${customer.fullName}`);
+      const custResult = await pool.query("SELECT fullName FROM customers WHERE id = $1", [customer_id]);
+      const customer = custResult.rows[0];
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Sales đã tạo phiếu giữ chỗ ${reservationCode} cho khách hàng ${customer.fullName}`]);
 
-      res.json({ success: true, reservationId: info.lastInsertRowid, reservationCode });
+      res.json({ success: true, reservationId: info.rows[0].id, reservationCode });
     } catch (err) {
       console.error("Error creating reservation:", err);
       res.status(500).json({ success: false, message: "Lỗi khi tạo phiếu giữ chỗ" });
@@ -578,54 +562,54 @@ async function startServer() {
   });
 
   // Deposits API
-  app.get("/api/deposits", (req, res) => {
+  app.get("/api/deposits", async (req, res) => {
     try {
-      const deposits = db.prepare(`
+      const result = await pool.query(`
         SELECT d.*, cust.fullName as customer_name, p.title as property_title 
         FROM deposits d
         JOIN customers cust ON d.customer_id = cust.id
         JOIN properties p ON d.property_id = p.id
         ORDER BY d.created_at DESC
-      `).all();
-      res.json(deposits);
+      `);
+      res.json(result.rows);
     } catch (err) {
       res.status(500).json({ success: false, message: "Lỗi khi tải danh sách đặt cọc" });
     }
   });
 
-  app.post("/api/deposits", (req, res) => {
+  app.post("/api/deposits", async (req, res) => {
     const { reservation_id, amount } = req.body;
     try {
-      const reservation = db.prepare("SELECT * FROM reservations WHERE id = ?").get(reservation_id) as any;
+      const resResult = await pool.query("SELECT * FROM reservations WHERE id = $1", [reservation_id]);
+      const reservation = resResult.rows[0];
+      
       if (!reservation || reservation.status !== 'Active') {
         return res.status(400).json({ success: false, message: "Phiếu giữ chỗ không hợp lệ hoặc đã hết hạn" });
       }
 
-      const info = db.prepare(`
+      const info = await pool.query(`
         INSERT INTO deposits (reservation_id, customer_id, property_id, amount, status)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(reservation_id, reservation.customer_id, reservation.property_id, amount, 'Success');
+        VALUES ($1, $2, $3, $4, $5) RETURNING id
+      `, [reservation_id, reservation.customer_id, reservation.property_id, amount, 'Success']);
 
-      const depositId = info.lastInsertRowid;
+      const depositId = info.rows[0].id;
 
-      // Update reservation status
-      db.prepare("UPDATE reservations SET status = 'Converted' WHERE id = ?").run(reservation_id);
+      await pool.query("UPDATE reservations SET status = 'Converted' WHERE id = $1", [reservation_id]);
+      await pool.query("UPDATE properties SET status = 'Đặt cọc' WHERE id = $1", [reservation.property_id]);
 
-      // Update property status
-      db.prepare("UPDATE properties SET status = 'Đặt cọc' WHERE id = ?").run(reservation.property_id);
-
-      // Automatically generate contract (Step 4)
-      const property = db.prepare("SELECT price FROM properties WHERE id = ?").get(reservation.property_id) as any;
-      const contractInfo = db.prepare(`
+      const propResult = await pool.query("SELECT price FROM properties WHERE id = $1", [reservation.property_id]);
+      const property = propResult.rows[0];
+      
+      const contractInfo = await pool.query(`
         INSERT INTO contracts (customer_id, property_id, deposit_id, total_value, status)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(reservation.customer_id, reservation.property_id, depositId, property.price, 'Draft');
+        VALUES ($1, $2, $3, $4, $5) RETURNING id
+      `, [reservation.customer_id, reservation.property_id, depositId, property.price, 'Draft']);
 
-      // Log activity
-      const customer = db.prepare("SELECT fullName FROM customers WHERE id = ?").get(reservation.customer_id) as any;
-      db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("contract", `Hệ thống đã tự động tạo hợp đồng cho khách hàng ${customer.fullName} sau khi đặt cọc thành công`);
+      const custResult = await pool.query("SELECT fullName FROM customers WHERE id = $1", [reservation.customer_id]);
+      const customer = custResult.rows[0];
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["contract", `Hệ thống đã tự động tạo hợp đồng cho khách hàng ${customer.fullName} sau khi đặt cọc thành công`]);
 
-      res.json({ success: true, depositId, contractId: contractInfo.lastInsertRowid });
+      res.json({ success: true, depositId, contractId: contractInfo.rows[0].id });
     } catch (err) {
       console.error("Error creating deposit:", err);
       res.status(500).json({ success: false, message: "Lỗi khi xác nhận đặt cọc" });
@@ -633,16 +617,18 @@ async function startServer() {
   });
 
   // Contract Confirmation API
-  app.patch("/api/contracts/:id/confirm", (req, res) => {
+  app.patch("/api/contracts/:id/confirm", async (req, res) => {
     const { id } = req.params;
     const { step, confirmed } = req.body;
     try {
-      const contract = db.prepare("SELECT * FROM contracts WHERE id = ?").get(id) as any;
+      const conResult = await pool.query("SELECT * FROM contracts WHERE id = $1", [id]);
+      const contract = conResult.rows[0];
+      
       if (!contract) return res.status(404).json({ success: false, message: "Không tìm thấy hợp đồng" });
 
       if (!confirmed) {
-        db.prepare("UPDATE contracts SET status = 'Cancelled' WHERE id = ?").run(id);
-        db.prepare("UPDATE properties SET status = 'Còn trống' WHERE id = ?").run(contract.property_id);
+        await pool.query("UPDATE contracts SET status = 'Cancelled' WHERE id = $1", [id]);
+        await pool.query("UPDATE properties SET status = 'Còn trống' WHERE id = $1", [contract.property_id]);
         return res.json({ success: true, message: "Hợp đồng đã bị hủy và căn hộ đã được mở lại" });
       }
 
@@ -653,17 +639,15 @@ async function startServer() {
         newStatus = 'Vendor_Confirmed';
       }
 
-      // If vendor confirmed, mark as completed
       if (newStatus === 'Vendor_Confirmed') {
         newStatus = 'Completed';
-        db.prepare("UPDATE properties SET status = 'Đã bán' WHERE id = ?").run(contract.property_id);
+        await pool.query("UPDATE properties SET status = 'Đã bán' WHERE id = $1", [contract.property_id]);
       }
 
-      db.prepare("UPDATE contracts SET status = ? WHERE id = ?").run(newStatus, id);
+      await pool.query("UPDATE contracts SET status = $1 WHERE id = $2", [newStatus, id]);
 
-      // Log activity
       const statusLabel = newStatus === 'Completed' ? 'hoàn tất' : (step === 'customer' ? 'khách hàng xác nhận' : 'nhà cung cấp xác nhận');
-      db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("system", `Hợp đồng #${id} đã được ${statusLabel}`);
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Hợp đồng #${id} đã được ${statusLabel}`]);
 
       res.json({ success: true, status: newStatus });
     } catch (err) {
@@ -672,9 +656,9 @@ async function startServer() {
     }
   });
 
-  app.get("/api/contracts", (req, res) => {
+  app.get("/api/contracts", async (req, res) => {
     try {
-      const contracts = db.prepare(`
+      const result = await pool.query(`
         SELECT 
           c.*, 
           cust.fullName as customer_name, 
@@ -691,80 +675,86 @@ async function startServer() {
         JOIN customers cust ON c.customer_id = cust.id
         JOIN properties p ON c.property_id = p.id
         ORDER BY c.created_at DESC
-      `).all();
-      res.json(contracts);
+      `);
+      res.json(result.rows);
     } catch (err) {
       console.error("Error fetching contracts:", err);
       res.status(500).json({ success: false, message: "Lỗi khi tải danh sách hợp đồng" });
     }
   });
 
-  app.post("/api/contracts", (req, res) => {
+  app.post("/api/contracts", async (req, res) => {
     const { customer_id, property_id, total_value, deposit, installments } = req.body;
-    const info = db.prepare(`
-      INSERT INTO contracts (customer_id, property_id, total_value, deposit, installments)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(customer_id, property_id, total_value, deposit, installments);
-    
-    // Log activity
-    const customer = db.prepare("SELECT fullName FROM customers WHERE id = ?").get(customer_id) as any;
-    db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("contract", `Hợp đồng mới được tạo cho khách hàng ${customer.fullName}`);
+    try {
+      const info = await pool.query(`
+        INSERT INTO contracts (customer_id, property_id, total_value, deposit_id)
+        VALUES ($1, $2, $3, $4) RETURNING id
+      `, [customer_id, property_id, total_value, null]); // Adjusted deposit param for PG schema
+      
+      const contractId = info.rows[0].id;
+      
+      const custResult = await pool.query("SELECT fullName FROM customers WHERE id = $1", [customer_id]);
+      const customer = custResult.rows[0];
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["contract", `Hợp đồng mới được tạo cho khách hàng ${customer.fullName}`]);
 
-    // Create initial payments
-    const contractId = info.lastInsertRowid;
-    const installmentAmount = (total_value - deposit) / installments;
-    for (let i = 1; i <= installments; i++) {
-      const dueDate = new Date();
-      dueDate.setMonth(dueDate.getMonth() + i);
-      db.prepare(`
-        INSERT INTO payments (contract_id, amount, due_date)
-        VALUES (?, ?, ?)
-      `).run(contractId, installmentAmount, dueDate.toISOString().split('T')[0]);
+      const installmentAmount = (total_value - deposit) / installments;
+      for (let i = 1; i <= installments; i++) {
+        const dueDate = new Date();
+        dueDate.setMonth(dueDate.getMonth() + i);
+        await pool.query(`
+          INSERT INTO payments (contract_id, amount, due_date)
+          VALUES ($1, $2, $3)
+        `, [contractId, installmentAmount, dueDate.toISOString().split('T')[0]]);
+      }
+
+      res.json({ success: true, contractId });
+    } catch (err) {
+      res.status(500).json({ success: false, message: "Lỗi khi tạo hợp đồng" });
     }
-
-    res.json({ success: true, contractId });
   });
 
-  app.patch("/api/contracts/:id/status", (req, res) => {
+  app.patch("/api/contracts/:id/status", async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
-    db.prepare("UPDATE contracts SET status = ? WHERE id = ?").run(status, id);
-    
-    // Log activity
-    db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("system", `Hợp đồng #HD${String(id).padStart(4, '0')} đã được chuyển sang trạng thái: ${status}`);
+    try {
+      await pool.query("UPDATE contracts SET status = $1 WHERE id = $2", [status, id]);
+      
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Hợp đồng #HD${String(id).padStart(4, '0')} đã được chuyển sang trạng thái: ${status}`]);
 
-    // If approved, mark property as sold
-    if (status === 'Đã duyệt') {
-      const contract = db.prepare("SELECT property_id FROM contracts WHERE id = ?").get(id) as any;
-      db.prepare("UPDATE properties SET status = 'Đã bán' WHERE id = ?").run(contract.property_id);
+      if (status === 'Đã duyệt') {
+        const conResult = await pool.query("SELECT property_id FROM contracts WHERE id = $1", [id]);
+        await pool.query("UPDATE properties SET status = 'Đã bán' WHERE id = $1", [conResult.rows[0].property_id]);
+      }
+      
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false, message: "Lỗi cập nhật trạng thái hợp đồng" });
     }
-    
-    res.json({ success: true });
   });
 
   // Payments API
-  app.get("/api/payments", (req, res) => {
+  app.get("/api/payments", async (req, res) => {
     try {
-      const payments = db.prepare(`
+      const result = await pool.query(`
         SELECT p.*, cust.fullName as customer_name, prop.title as property_title
         FROM payments p
         JOIN contracts c ON p.contract_id = c.id
         JOIN customers cust ON c.customer_id = cust.id
         JOIN properties prop ON c.property_id = prop.id
         ORDER BY p.due_date ASC
-      `).all();
-      res.json(payments);
+      `);
+      res.json(result.rows);
     } catch (err) {
       console.error("Error fetching payments:", err);
       res.status(500).json({ success: false, message: "Lỗi khi tải danh sách thanh toán" });
     }
   });
 
-  app.patch("/api/payments/:id/status", (req, res) => {
+  app.patch("/api/payments/:id/status", async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
     try {
-      db.prepare("UPDATE payments SET status = ? WHERE id = ?").run(status, id);
+      await pool.query("UPDATE payments SET status = $1 WHERE id = $2", [status, id]);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ success: false, message: "Lỗi khi cập nhật trạng thái thanh toán" });
@@ -772,54 +762,57 @@ async function startServer() {
   });
 
   // Dashboard Stats
-  app.get("/api/stats", (req, res) => {
+  app.get("/api/stats", async (req, res) => {
     try {
-      const monthlyContracts = db.prepare("SELECT count(*) as count FROM contracts WHERE strftime('%m', created_at) = strftime('%m', 'now')").get() as any;
-      const totalRevenue = db.prepare("SELECT sum(total_value) as total FROM contracts WHERE status = 'Completed'").get() as any;
-      const pendingContracts = db.prepare("SELECT count(*) as count FROM contracts WHERE status IN ('Draft', 'Customer_Confirmed')").get() as any;
+      const monthlyContracts = await pool.query("SELECT count(*) as count FROM contracts WHERE EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)");
+      const totalRevenue = await pool.query("SELECT sum(total_value) as total FROM contracts WHERE status = 'Completed'");
+      const pendingContracts = await pool.query("SELECT count(*) as count FROM contracts WHERE status IN ('Draft', 'Customer_Confirmed')");
       
-      const newCustomers = db.prepare("SELECT count(*) as count FROM customers WHERE strftime('%m', created_at) = strftime('%m', 'now')").get() as any;
-      const propertiesForSale = db.prepare("SELECT count(*) as count FROM properties WHERE status = 'Còn trống'").get() as any;
-      const propertiesSold = db.prepare("SELECT count(*) as count FROM properties WHERE status = 'Đã bán'").get() as any;
-      const totalTransactionValue = db.prepare("SELECT sum(total_value) as total FROM contracts WHERE status != 'Cancelled'").get() as any;
+      const newCustomers = await pool.query("SELECT count(*) as count FROM customers WHERE EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)");
+      const propertiesForSale = await pool.query("SELECT count(*) as count FROM properties WHERE status = 'Còn trống'");
+      const propertiesSold = await pool.query("SELECT count(*) as count FROM properties WHERE status = 'Đã bán'");
+      const totalTransactionValue = await pool.query("SELECT sum(total_value) as total FROM contracts WHERE status != 'Cancelled'");
 
-      const totalCustomers = db.prepare("SELECT count(*) as count FROM customers").get() as any;
-      const totalContracts = db.prepare("SELECT count(*) as count FROM contracts WHERE status = 'Completed'").get() as any;
-      const conversionRate = totalCustomers.count > 0 ? (totalContracts.count / totalCustomers.count) * 100 : 0;
+      const totalCustomers = await pool.query("SELECT count(*) as count FROM customers");
+      const totalContracts = await pool.query("SELECT count(*) as count FROM contracts WHERE status = 'Completed'");
+      
+      const tCustCount = parseInt(totalCustomers.rows[0].count);
+      const tConCount = parseInt(totalContracts.rows[0].count);
+      const conversionRate = tCustCount > 0 ? (tConCount / tCustCount) * 100 : 0;
 
-      const revenueByMonth = db.prepare(`
-        SELECT strftime('%m/%Y', created_at) as month, sum(total_value) as revenue, count(*) as contracts
+      const revenueByMonth = await pool.query(`
+        SELECT TO_CHAR(created_at, 'MM/YYYY') as month, sum(total_value) as revenue, count(*) as contracts
         FROM contracts
         WHERE status = 'Completed'
         GROUP BY month
-        ORDER BY created_at ASC
+        ORDER BY MIN(created_at) ASC
         LIMIT 6
-      `).all();
+      `);
 
-      const propertyTypeDistribution = db.prepare(`
+      const propertyTypeDistribution = await pool.query(`
         SELECT type as name, count(*) as value
         FROM properties
         GROUP BY type
-      `).all();
+      `);
 
-      const contractStatusDistribution = db.prepare(`
+      const contractStatusDistribution = await pool.query(`
         SELECT status as name, count(*) as value
         FROM contracts
         GROUP BY status
-      `).all();
+      `);
 
       res.json({
-        monthlyContracts: monthlyContracts.count,
-        totalRevenue: totalRevenue.total || 0,
-        pendingContracts: pendingContracts.count,
-        newCustomers: newCustomers.count,
-        propertiesForSale: propertiesForSale.count,
-        propertiesSold: propertiesSold.count,
-        totalTransactionValue: totalTransactionValue.total || 0,
+        monthlyContracts: parseInt(monthlyContracts.rows[0].count),
+        totalRevenue: totalRevenue.rows[0].total || 0,
+        pendingContracts: parseInt(pendingContracts.rows[0].count),
+        newCustomers: parseInt(newCustomers.rows[0].count),
+        propertiesForSale: parseInt(propertiesForSale.rows[0].count),
+        propertiesSold: parseInt(propertiesSold.rows[0].count),
+        totalTransactionValue: totalTransactionValue.rows[0].total || 0,
         conversionRate: Math.round(conversionRate),
-        revenueByMonth,
-        propertyTypeDistribution,
-        contractStatusDistribution
+        revenueByMonth: revenueByMonth.rows,
+        propertyTypeDistribution: propertyTypeDistribution.rows,
+        contractStatusDistribution: contractStatusDistribution.rows
       });
     } catch (err) {
       console.error("Error fetching stats:", err);
@@ -827,67 +820,70 @@ async function startServer() {
     }
   });
 
-  app.get("/api/activities", (req, res) => {
+  app.get("/api/activities", async (req, res) => {
     try {
-      const activities = db.prepare("SELECT * FROM activities ORDER BY timestamp DESC LIMIT 10").all();
-      res.json(activities);
+      const result = await pool.query("SELECT * FROM activities ORDER BY timestamp DESC LIMIT 10");
+      res.json(result.rows);
     } catch (err) {
       console.error("Error fetching activities:", err);
       res.status(500).json({ success: false, message: "Lỗi khi tải hoạt động" });
     }
   });
 
-  app.get("/api/search", (req, res) => {
+  app.get("/api/search", async (req, res) => {
     const { q } = req.query;
     if (!q) return res.json({ customers: [], properties: [], contracts: [] });
 
     const query = `%${q}%`;
-    const customers = db.prepare("SELECT * FROM customers WHERE fullName LIKE ? OR phoneNumber LIKE ? LIMIT 5").all(query, query);
-    const properties = db.prepare("SELECT * FROM properties WHERE title LIKE ? OR location LIKE ? LIMIT 5").all(query, query);
-    const contracts = db.prepare(`
-      SELECT c.*, cust.fullName as customer_name, p.title as property_title 
-      FROM contracts c
-      JOIN customers cust ON c.customer_id = cust.id
-      JOIN properties p ON c.property_id = p.id
-      WHERE cust.fullName LIKE ? OR p.title LIKE ?
-      LIMIT 5
-    `).all(query, query);
+    try {
+      const customers = await pool.query("SELECT * FROM customers WHERE fullName ILIKE $1 OR phoneNumber ILIKE $2 LIMIT 5", [query, query]);
+      const properties = await pool.query("SELECT * FROM properties WHERE title ILIKE $1 OR location ILIKE $2 LIMIT 5", [query, query]);
+      const contracts = await pool.query(`
+        SELECT c.*, cust.fullName as customer_name, p.title as property_title 
+        FROM contracts c
+        JOIN customers cust ON c.customer_id = cust.id
+        JOIN properties p ON c.property_id = p.id
+        WHERE cust.fullName ILIKE $1 OR p.title ILIKE $2
+        LIMIT 5
+      `, [query, query]);
 
-    res.json({ customers, properties, contracts });
+      res.json({ customers: customers.rows, properties: properties.rows, contracts: contracts.rows });
+    } catch (err) {
+      res.status(500).json({ success: false, message: "Lỗi tìm kiếm" });
+    }
   });
 
-  app.get("/api/users", (req, res) => {
+  app.get("/api/users", async (req, res) => {
     const { role } = req.query;
     try {
       let query = "SELECT id, username, role, approved FROM users";
       const params: any[] = [];
       if (role) {
-        query += " WHERE role = ?";
+        query += " WHERE role = $1";
         params.push(role);
       }
-      const users = db.prepare(query).all(...params);
-      res.json(users.map((u: any) => ({ ...u, approved: !!u.approved })));
+      const result = await pool.query(query, params);
+      res.json(result.rows.map((u: any) => ({ ...u, approved: !!u.approved })));
     } catch (err) {
       res.status(500).json({ success: false, message: "Lỗi khi tải danh sách nhân viên" });
     }
   });
 
-  app.patch("/api/users/:id/approve", (req, res) => {
+  app.patch("/api/users/:id/approve", async (req, res) => {
     const { id } = req.params;
     try {
-      db.prepare("UPDATE users SET approved = 1 WHERE id = ?").run(id);
+      await pool.query("UPDATE users SET approved = 1 WHERE id = $1", [id]);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ success: false, message: "Lỗi khi duyệt tài khoản" });
     }
   });
 
-  app.delete("/api/users/:id", (req, res) => {
+  app.delete("/api/users/:id", async (req, res) => {
     const { id } = req.params;
     console.log(`[Server] Deleting user ID: ${id}`);
     try {
-      const result = db.prepare("DELETE FROM users WHERE id = ?").run(id);
-      console.log(`[Server] Delete result:`, result);
+      await pool.query("DELETE FROM users WHERE id = $1", [id]);
       res.json({ success: true });
     } catch (err) {
       console.error(`[Server] Delete user error:`, err);
@@ -895,7 +891,7 @@ async function startServer() {
     }
   });
 
-  app.delete("/api/customers/:id", (req, res) => {
+  app.delete("/api/customers/:id", async (req, res) => {
     const { id } = req.params;
     const { user_id, role } = req.body || {};
     
@@ -903,34 +899,39 @@ async function startServer() {
       return res.status(403).json({ success: false, message: "Chỉ quản lý mới có quyền xóa trực tiếp" });
     }
 
+    const client = await pool.connect();
     try {
-      db.transaction(() => {
-        // 1. Delete payments linked to contracts of this customer
-        db.prepare(`
-          DELETE FROM payments 
-          WHERE contract_id IN (SELECT id FROM contracts WHERE customer_id = ?)
-        `).run(id);
-
-        // 2. Delete contracts
-        db.prepare("DELETE FROM contracts WHERE customer_id = ?").run(id);
-
-        // 3. Delete requests
-        db.prepare("DELETE FROM requests WHERE customer_id = ?").run(id);
-        
-        // 4. Delete customer
-        db.prepare("DELETE FROM customers WHERE id = ?").run(id);
-        
-        // 5. Log activity
-        db.prepare("INSERT INTO activities (type, content) VALUES (?, ?)").run("system", `Khách hàng #${id} đã được xóa trực tiếp bởi quản lý ID: ${user_id || 'N/A'}.`);
-      })();
+      await client.query("BEGIN");
       
+      // 1. Delete payments linked to contracts of this customer
+      await client.query(`
+        DELETE FROM payments 
+        WHERE contract_id IN (SELECT id FROM contracts WHERE customer_id = $1)
+      `, [id]);
+
+      // 2. Delete contracts
+      await client.query("DELETE FROM contracts WHERE customer_id = $1", [id]);
+
+      // 3. Delete requests
+      await client.query("DELETE FROM requests WHERE customer_id = $1", [id]);
+      
+      // 4. Delete customer
+      await client.query("DELETE FROM customers WHERE id = $1", [id]);
+      
+      // 5. Log activity
+      await client.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Khách hàng #${id} đã được xóa trực tiếp bởi quản lý ID: ${user_id || 'N/A'}.`]);
+      
+      await client.query("COMMIT");
       res.json({ success: true });
     } catch (err) {
+      await client.query("ROLLBACK");
       console.error('Delete customer error:', err);
       res.status(500).json({ 
         success: false, 
         message: "Lỗi khi xóa khách hàng: " + (err instanceof Error ? err.message : String(err)) 
       });
+    } finally {
+      client.release();
     }
   });
 
@@ -949,7 +950,7 @@ async function startServer() {
 
   const PORT = 3000;
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
   });
 }
 
