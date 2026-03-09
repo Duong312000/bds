@@ -500,6 +500,35 @@ async function startServer() {
     }
   });
 
+  // 1. API ĐỂ XỬ LÝ KHI BẠN BẤM LƯU/CẬP NHẬT (Bao gồm cả ảnh mới)
+  app.put("/api/properties/:id", (req, res) => {
+    const { id } = req.params;
+    const { title, type, price, area, location, status, image_url, description, listing_type } = req.body;
+    try {
+      db.prepare(`
+        UPDATE properties 
+        SET title = ?, type = ?, price = ?, area = ?, location = ?, status = ?, image_url = ?, description = ?, listing_type = ?
+        WHERE id = ?
+      `).run(title, type, price, area, location, status, image_url, description, listing_type, id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error updating property:", err);
+      res.status(500).json({ success: false, message: "Lỗi khi cập nhật bất động sản" });
+    }
+  });
+
+  // 2. API ĐỂ XỬ LÝ KHI BẠN BẤM XÓA DỰ ÁN
+  app.delete("/api/properties/:id", (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare("DELETE FROM properties WHERE id = ?").run(id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting property:", err);
+      res.status(500).json({ success: false, message: "Lỗi khi xóa bất động sản" });
+    }
+  });
+
   // Reservations API
   app.get("/api/reservations", (req, res) => {
     try {
