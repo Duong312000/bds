@@ -11,14 +11,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // 1. KẾT NỐI VÀO DATABASE CỦA RAILWAY
-if (!process.env.DATABASE_URL) {
-  console.error("❌ ERROR: Thiếu biến DATABASE_URL. Hãy thêm vào tab Variables trên Railway.");
+if (!process.env.DATABASE_PUBLIC_URL) {
+  console.error("❌ ERROR: Thiếu biến DATABASE_PUBLIC_URL. Hãy thêm vào tab Variables trên Railway.");
   process.exit(1);
 }
 
 const { Pool } = pg;
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_PUBLIC_URL,
   ssl: { rejectUnauthorized: false } // Bắt buộc trên Railway
 });
 
