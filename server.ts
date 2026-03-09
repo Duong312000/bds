@@ -239,7 +239,10 @@ if (userCount.count === 0) {
 
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  
+  // Tăng giới hạn nhận JSON và URL-encoded lên 10MB để thoải mái chứa ảnh Base64
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   // Auth API
   app.post("/api/login", (req, res) => {
