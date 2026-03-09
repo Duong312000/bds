@@ -1,6 +1,7 @@
 import React from 'react';
 import { 
   AreaChart, 
+  ComposedChart,
   Area, 
   XAxis, 
   YAxis, 
@@ -18,9 +19,9 @@ interface ChartRevenueProps {
 
 export const ChartRevenue = ({ data }: ChartRevenueProps) => {
   return (
-    <div className="h-[350px]">
+    <div className="h-[350px] w-full min-w-0">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data}>
+        <ComposedChart data={data}>
           <defs>
             <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#007AFF" stopOpacity={0.1}/>
@@ -33,12 +34,12 @@ export const ChartRevenue = ({ data }: ChartRevenueProps) => {
           <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
           <Tooltip 
             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-            formatter={(v: any, name: string) => name === 'revenue' ? formatCurrency(v) : v}
+            formatter={(v: any, name: string) => name === 'Doanh thu' ? formatCurrency(v) : v}
           />
           <Legend verticalAlign="top" align="right" height={36} iconType="circle" />
           <Area yAxisId="left" type="monotone" dataKey="revenue" name="Doanh thu" stroke="#007AFF" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
           <Line yAxisId="right" type="monotone" dataKey="contracts" name="Hợp đồng" stroke="#FF8A00" strokeWidth={2} dot={{ r: 4 }} />
-        </AreaChart>
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );
