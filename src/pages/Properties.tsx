@@ -215,10 +215,17 @@ export const Properties = ({ user }: PropertiesProps) => {
     }
   };
 
-  const filteredCustomers = customers.filter(c => 
-    c.fullName.toLowerCase().includes(searchCustomer.toLowerCase()) || 
-    c.phoneNumber.includes(searchCustomer)
+  const filteredCustomers = customers.filter(c => {
+  // Tạo giá trị mặc định là chuỗi rỗng nếu dữ liệu bị null/undefined
+  const fullName = c.fullName || "";
+  const phoneNumber = c.phoneNumber || "";
+  const search = searchCustomer.toLowerCase();
+
+  return (
+    fullName.toLowerCase().includes(search) || 
+    phoneNumber.includes(searchCustomer)
   );
+});
 
   return (
     <div className="space-y-6">
