@@ -32,8 +32,8 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: SidebarI
     className={cn(
       "flex items-center w-full px-4 py-3 text-sm font-medium transition-all rounded-xl mb-1 group relative",
       active 
-        ? "bg-brand-blue text-white shadow-lg shadow-brand-blue/20" 
-        : "text-slate-400 hover:bg-slate-50 hover:text-brand-blue"
+        ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" 
+        : "text-slate-400 hover:bg-slate-50 hover:text-blue-600"
     )}
   >
     <Icon className={cn("w-5 h-5 transition-all", collapsed ? "mx-auto" : "mr-3")} />
@@ -71,8 +71,8 @@ export const Sidebar = ({ user, view, setView, isSidebarOpen, setIsSidebarOpen, 
             </svg>
           </div>
           <div className="flex flex-col">
-            <span className="text-xl font-black tracking-tight text-brand-blue leading-none">iHOUZZ</span>
-            <span className="text-[8px] font-bold text-brand-orange uppercase tracking-widest mt-0.5">BĐS HOUZZ UNI</span>
+            <span className="text-xl font-black tracking-tight text-blue-600 leading-none">iHOUZZ</span>
+            <span className="text-[8px] font-bold text-orange-500 uppercase tracking-widest mt-0.5">BĐS HOUZZ UNI</span>
           </div>
         </div>
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-1.5 hover:bg-slate-50 rounded-lg transition-colors text-slate-400">
@@ -106,13 +106,13 @@ export const Sidebar = ({ user, view, setView, isSidebarOpen, setIsSidebarOpen, 
 
       <div className="p-4 border-t border-slate-50">
         <div className="flex items-center p-2 mb-4 bg-slate-50 rounded-2xl">
-          <div className="w-10 h-10 rounded-xl bg-brand-blue flex items-center justify-center mr-3 shadow-lg shadow-brand-blue/20">
+          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center mr-3 shadow-lg shadow-blue-600/20">
             <UserIcon className="w-6 h-6 text-white" />
           </div>
           {isSidebarOpen && (
             <div className="overflow-hidden">
               <p className="text-sm font-bold truncate text-slate-900">{user.username}</p>
-              <p className="text-[10px] font-bold text-brand-orange uppercase tracking-wider">{user.role}</p>
+              <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wider">{user.role}</p>
             </div>
           )}
         </div>
