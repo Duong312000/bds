@@ -163,7 +163,10 @@ async function initDB() {
 
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  
+  // Tăng giới hạn nhận JSON và URL-encoded lên 10MB để thoải mái chứa ảnh Base64
+  app.use(express.json({ limit: '15mb' }));
+  app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
   await initDB();
 
