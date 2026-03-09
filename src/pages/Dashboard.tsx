@@ -131,7 +131,7 @@ export const Dashboard = () => {
 
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
           <h3 className="text-lg font-bold text-slate-900 mb-6">Phân loại BĐS</h3>
-          <div className="h-[300px]">
+          <div className="h-[300px] min-h-[300px] w-full relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
