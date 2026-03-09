@@ -63,7 +63,7 @@ export const Properties = ({ user }: PropertiesProps) => {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
+      if (file.size > 15 * 1024 * 1024) {
         setNotification({ message: 'File quá lớn! Vui lòng chọn ảnh dưới 2MB.', type: 'error' });
         return;
       }
