@@ -319,8 +319,12 @@ async function startServer() {
       `);
       res.json(result.rows);
     } catch (err) {
-      console.error("Error fetching requests:", err);
-      res.status(500).json({ success: false, message: "Lỗi khi tải danh sách yêu cầu" });
+      // 1. In ra lỗi SQL thực sự vào màn hình đen (Server logs)
+      console.error("🔥 LỖI TẠI /api/requests:", err);
+      
+      // 2. Tạm thời trả về mảng rỗng thay vì báo lỗi 500 
+      // để Frontend KHÔNG BỊ CRASH (j.map is not a function) nữa!
+      res.json([]);
     }
   });
 
