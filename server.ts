@@ -125,38 +125,6 @@ async function initDB() {
       );
     `);
 
-    // Chạy các đoạn Migration (Thêm cột) y hệt code cũ của bạn
-    const migrations = [
-      "ALTER TABLE users ADD COLUMN approved INTEGER DEFAULT 1",
-      "ALTER TABLE properties ADD COLUMN type TEXT DEFAULT 'Chung cư'",
-      "ALTER TABLE activities ADD COLUMN type TEXT",
-      "ALTER TABLE requests ADD COLUMN property_id INTEGER",
-      "ALTER TABLE requests ADD COLUMN processed_by INTEGER",
-      "ALTER TABLE requests ADD COLUMN processed_at TIMESTAMP",
-      "ALTER TABLE requests ADD COLUMN new_data TEXT",
-      "ALTER TABLE requests ADD COLUMN type TEXT DEFAULT 'Ownership'",
-      "ALTER TABLE requests ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-      "ALTER TABLE contracts ADD COLUMN deposit_id INTEGER",
-      "ALTER TABLE contracts ADD COLUMN file_url TEXT",
-      "ALTER TABLE contracts DROP COLUMN deposit",
-      "ALTER TABLE contracts DROP COLUMN installments",
-      "ALTER TABLE customers ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-      "ALTER TABLE customers RENAME COLUMN createdDate TO created_at",
-      "ALTER TABLE customers RENAME COLUMN name TO fullName",
-      "ALTER TABLE customers RENAME COLUMN phone TO phoneNumber",
-      "ALTER TABLE customers ADD COLUMN createdDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-      "ALTER TABLE customers ADD COLUMN owner_id INTEGER",
-      "ALTER TABLE customers ADD COLUMN createdBy INTEGER",
-      "ALTER TABLE customers ADD COLUMN address TEXT",
-      "ALTER TABLE customers ADD COLUMN email TEXT",
-      "ALTER TABLE customers ADD COLUMN nationalId TEXT",
-      "ALTER TABLE properties ADD COLUMN description TEXT",
-      "ALTER TABLE properties ADD COLUMN listing_type TEXT DEFAULT 'Bán'"
-    ];
-
-    for (const sql of migrations) {
-      try { await client.query(sql); } catch (e) { /* Bỏ qua lỗi nếu cột đã tồn tại (giống code cũ) */ }
-    }
 
     // Seed initial data if empty
     const userCountResult = await client.query("SELECT count(*) as count FROM users");
