@@ -242,7 +242,7 @@ export const Properties = ({ user }: PropertiesProps) => {
               setFormData({ title: '', type: 'Chung cư', price: '', area: '', location: '', image_url: '', description: '', listing_type: 'Bán' });
               setIsModalOpen(true);
             }}
-            className="px-4 py-2 bg-brand-blue text-white rounded-xl flex items-center font-medium hover:bg-brand-blue/90 transition-all shadow-lg shadow-brand-blue/20"
+            className="px-4 py-2 bg-blue-500 text-white rounded-xl flex items-center font-medium hover:bg-blue-500/90 transition-all shadow-lg shadow-blue-500/20"
           >
             <Plus className="w-4 h-4 mr-2" /> Thêm dự án
           </button>
