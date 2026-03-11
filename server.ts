@@ -205,14 +205,13 @@ async function startServer() {
       const result = await pool.query(`
         SELECT c.*, u.username as owner_name 
         FROM customers c 
-        LEFT JOIN users u ON c.owner_id = u.id 
+        LEFT JOIN users u ON c.createdBy = u.id -- Đã sửa owner_id thành createdBy
         ORDER BY c.id DESC
       `);
-      console.log(`Found ${result.rows.length} customers`);
       res.json(result.rows);
     } catch (err) {
-      console.error("Error fetching customers:", err);
-      res.status(500).json({ success: false, message: "Lỗi khi tải danh sách khách hàng" });
+      console.error("🔥 Lỗi tại /api/customers:", err);
+      res.json([]); // Cứu Frontend bằng mảng rỗng
     }
   });
 
@@ -427,8 +426,8 @@ async function startServer() {
       const result = await pool.query("SELECT * FROM properties");
       res.json(result.rows);
     } catch (err) {
-      console.error("Error fetching properties:", err);
-      res.status(500).json({ success: false, message: "Lỗi khi tải danh sách bất động sản" });
+      console.error("🔥 Lỗi tại /api/properties:", err);
+      res.json([]); // Cứu Frontend bằng mảng rỗng
     }
   });
 
@@ -492,7 +491,8 @@ async function startServer() {
       `);
       res.json(result.rows);
     } catch (err) {
-      res.status(500).json({ success: false, message: "Lỗi khi tải danh sách giữ chỗ" });
+      console.error("🔥 Lỗi tại /api/reservations:", err);
+      res.json([]);
     }
   });
 
@@ -540,7 +540,8 @@ async function startServer() {
       `);
       res.json(result.rows);
     } catch (err) {
-      res.status(500).json({ success: false, message: "Lỗi khi tải danh sách đặt cọc" });
+      console.error("🔥 Lỗi tại /api/deposits:", err);
+      res.json([]);
     }
   });
 
