@@ -507,12 +507,19 @@ async function startServer() {
   });
 
   app.post("/api/reservations", async (req, res) => {
+    // Nhận dữ liệu từ Frontend gửi lên
     const { customer_id, property_id, sales_id } = req.body;
+    
     try {
+      // 1. Kiểm tra Bất động sản có tồn tại và còn trống không
       const propResult = await pool.query("SELECT status FROM properties WHERE id = $1", [property_id]);
       const property = propResult.rows[0];
       
-      if (property?.status !== 'Còn trống') {
+      if (!property) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy bất động sản này trong hệ thống" });
+      }
+      
+      if (property.status !== 'Còn trống') {
         return res.status(400).json({ success: false, message: "Căn hộ này không còn trống để giữ chỗ" });
       }
 
@@ -520,24 +527,39 @@ async function startServer() {
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 24);
 
+      // 2. Tạo phiếu giữ chỗ (Cho phép sales_id có thể null nếu chưa gán)
       const info = await pool.query(`
         INSERT INTO reservations (customer_id, property_id, sales_id, reservation_code, expires_at)
         VALUES ($1, $2, $3, $4, $5) RETURNING id
-      `, [customer_id, property_id, sales_id, reservationCode, expiresAt.toISOString()]);
+      `, [customer_id, property_id, sales_id || null, reservationCode, expiresAt.toISOString()]);
 
+      // 3. Cập nhật trạng thái Bất động sản
       await pool.query("UPDATE properties SET status = 'Giữ chỗ' WHERE id = $1", [property_id]);
 
-      // SỬA TẠI ĐÂY: Dùng fullname thay vì fullName vì CSDL trả về chữ thường
+      // 4. Lấy tên khách hàng để lưu vào nhật ký hoạt động (Xử lý chống lỗi undefined)
+      // Dùng ILIKE hoặc tìm cả fullname (chữ thường) lẫn fullName (nếu có)
       const custResult = await pool.query("SELECT fullname FROM customers WHERE id = $1", [customer_id]);
       const customer = custResult.rows[0];
       
-      // Thêm ?. đề phòng khách hàng bị lỗi
-      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Sales đã tạo phiếu giữ chỗ ${reservationCode} cho khách hàng ${customer?.fullname || 'Không rõ'}`]);
+      // Lấy tên, nếu không có thì để mặc định
+      const customerName = customer ? (customer.fullname || customer.fullName || 'Khách hàng') : 'Khách hàng';
+
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", [
+        "system", 
+        `Sales đã tạo phiếu giữ chỗ ${reservationCode} cho ${customerName}`
+      ]);
 
       res.json({ success: true, reservationId: info.rows[0].id, reservationCode });
+      
     } catch (err) {
-      console.error("🔥 Lỗi tạo phiếu giữ chỗ:", err);
-      res.status(500).json({ success: false, message: "Lỗi khi tạo phiếu giữ chỗ" });
+      // IN LỖI CHI TIẾT RA TERMINAL ĐỂ BẮT ĐÚNG BỆNH
+      console.error("🔥 LỖI CHI TIẾT KHI TẠO GIỮ CHỖ:", err.message);
+      
+      // Gửi nguyên nhân lỗi chi tiết về thẳng Frontend cho dễ nhìn
+      res.status(500).json({ 
+        success: false, 
+        message: "Lỗi Server: " + err.message 
+      });
     }
   });
 
