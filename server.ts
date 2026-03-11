@@ -203,15 +203,25 @@ async function startServer() {
   app.get("/api/customers", async (req, res) => {
     try {
       const result = await pool.query(`
-        SELECT c.*, u.username as owner_name 
-        FROM customers c 
-        LEFT JOIN users u ON c.createdBy = u.id -- Đã sửa owner_id thành createdBy
+        SELECT 
+          c.id, 
+          c.fullname AS "fullName", 
+          c.phonenumber AS "phoneNumber", 
+          c.email, 
+          c.address, 
+          c.nationalid AS "nationalId", 
+          c.status, 
+          c.createdby AS "createdBy", 
+          c.createddate AS "createdDate",
+          u.username as owner_name
+        FROM customers c
+        LEFT JOIN users u ON c.createdby = u.id
         ORDER BY c.id DESC
       `);
       res.json(result.rows);
     } catch (err) {
       console.error("🔥 Lỗi tại /api/customers:", err);
-      res.json([]); // Cứu Frontend bằng mảng rỗng
+      res.json([]); 
     }
   });
 
@@ -502,7 +512,7 @@ async function startServer() {
       const propResult = await pool.query("SELECT status FROM properties WHERE id = $1", [property_id]);
       const property = propResult.rows[0];
       
-      if (property.status !== 'Còn trống') {
+      if (property?.status !== 'Còn trống') {
         return res.status(400).json({ success: false, message: "Căn hộ này không còn trống để giữ chỗ" });
       }
 
@@ -517,13 +527,16 @@ async function startServer() {
 
       await pool.query("UPDATE properties SET status = 'Giữ chỗ' WHERE id = $1", [property_id]);
 
-      const custResult = await pool.query("SELECT fullName FROM customers WHERE id = $1", [customer_id]);
+      // SỬA TẠI ĐÂY: Dùng fullname thay vì fullName vì CSDL trả về chữ thường
+      const custResult = await pool.query("SELECT fullname FROM customers WHERE id = $1", [customer_id]);
       const customer = custResult.rows[0];
-      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Sales đã tạo phiếu giữ chỗ ${reservationCode} cho khách hàng ${customer.fullName}`]);
+      
+      // Thêm ?. đề phòng khách hàng bị lỗi
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Sales đã tạo phiếu giữ chỗ ${reservationCode} cho khách hàng ${customer?.fullname || 'Không rõ'}`]);
 
       res.json({ success: true, reservationId: info.rows[0].id, reservationCode });
     } catch (err) {
-      console.error("Error creating reservation:", err);
+      console.error("🔥 Lỗi tạo phiếu giữ chỗ:", err);
       res.status(500).json({ success: false, message: "Lỗi khi tạo phiếu giữ chỗ" });
     }
   });
@@ -850,6 +863,29 @@ async function startServer() {
       res.json(result.rows.map((u: any) => ({ ...u, approved: !!u.approved })));
     } catch (err) {
       res.status(500).json({ success: false, message: "Lỗi khi tải danh sách nhân viên" });
+    }
+  });
+
+  // API Thêm nhân viên mới
+  app.post("/api/users", async (req, res) => {
+    const { username, password, role } = req.body;
+    try {
+      // Kiểm tra xem username đã tồn tại chưa
+      const checkUser = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
+      if (checkUser.rows.length > 0) {
+        return res.status(400).json({ success: false, message: "Tên đăng nhập đã tồn tại!" });
+      }
+
+      // Thêm nhân viên (mặc định cho approved = 1 nếu Admin thêm)
+      await pool.query(`
+        INSERT INTO users (username, password, role, approved)
+        VALUES ($1, $2, $3, 1)
+      `, [username, password, role || 'sales']);
+      
+      res.json({ success: true });
+    } catch (err) {
+      console.error("🔥 Lỗi thêm nhân viên:", err);
+      res.status(500).json({ success: false, message: "Lỗi hệ thống khi thêm nhân viên" });
     }
   });
 
