@@ -72,7 +72,7 @@ export const Sidebar = ({ user, view, setView, isSidebarOpen, setIsSidebarOpen, 
           </div>
           <div className="flex flex-col">
             <span className="text-xl font-black tracking-tight text-blue-600 leading-none">iHOUZZ</span>
-            <span className="text-[8px] font-bold text-orange-500 uppercase tracking-widest mt-0.5">BĐS HOUZZ UNI</span>
+            <span className="text-[8px] font-bold text-orange-500 uppercase tracking-widest mt-0.5">BĐS iHOUZZ</span>
           </div>
         </div>
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-1.5 hover:bg-slate-50 rounded-lg transition-colors text-slate-400">
