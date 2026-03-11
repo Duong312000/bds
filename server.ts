@@ -624,6 +624,7 @@ async function startServer() {
     }
   });
 
+  // Contracts API
   app.get("/api/contracts", async (req, res) => {
     try {
       const result = await pool.query(`
@@ -646,8 +647,8 @@ async function startServer() {
       `);
       res.json(result.rows);
     } catch (err) {
-      console.error("Error fetching contracts:", err);
-      res.status(500).json({ success: false, message: "Lỗi khi tải danh sách hợp đồng" });
+      console.error("🔥 Lỗi tại /api/contracts:", err);
+      res.json([]);
     }
   });
 
@@ -713,8 +714,8 @@ async function startServer() {
       `);
       res.json(result.rows);
     } catch (err) {
-      console.error("Error fetching payments:", err);
-      res.status(500).json({ success: false, message: "Lỗi khi tải danh sách thanh toán" });
+      console.error("🔥 Lỗi tại /api/payments:", err);
+      res.json([]);
     }
   });
 
