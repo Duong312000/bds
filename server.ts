@@ -266,60 +266,47 @@ async function startServer() {
         const nId = String(nationalId).trim();
         const fName = String(fullName).trim();
         
-        // Sửa owner_id -> createdby, và sửa lại tên cột cho chuẩn Postgres
+        // Đã bỏ owner_id, dùng đúng chuẩn chữ thường
         const result = await pool.query(`
-          SELECT c.*, u.username as owner_name 
+          SELECT 
+            c.id, c.fullname AS "fullName", c.phonenumber AS "phoneNumber", 
+            c.email, c.address, c.nationalid AS "nationalId", c.status
           FROM customers c 
-          LEFT JOIN users u ON c.createdby = u.id 
           WHERE TRIM(c.nationalid) = $1 AND TRIM(c.fullname) ILIKE $2
         `, [nId, fName]);
-        
         customer = result.rows[0];
       }
       res.json({ exists: !!customer, customer });
-      
     } catch (err) {
-      console.error("🔥 Lỗi tại /api/customers/check:", err);
-      // Có lỗi thì trả về false để không sập Frontend, không sập Server
+      console.error("🔥 Lỗi check khách hàng:", err);
       res.json({ exists: false, customer: null });
     }
   });
 
   app.post("/api/customers", async (req, res) => {
-    // Lưu ý: Gỡ bỏ biến owner_id khỏi đây vì DB không có
+    // Đã gỡ bỏ owner_id ra khỏi req.body vì không tồn tại
     const { fullName, phoneNumber, email, address, nationalId, status, createdBy } = req.body;
     
-    // Server-side validation
-    if (!fullName || !nationalId) {
-      return res.status(400).json({ success: false, message: "Họ tên và CCCD là bắt buộc" });
-    }
+    if (!fullName || !nationalId) return res.status(400).json({ success: false, message: "Họ tên và CCCD là bắt buộc" });
 
     const trimmedName = String(fullName).trim();
     const trimmedCCCD = String(nationalId).trim();
 
-    if (trimmedName.length < 3) {
-      return res.status(400).json({ success: false, message: "Họ và tên phải có ít nhất 3 ký tự" });
-    }
-
     try {
-      // Sửa fullName -> fullname, nationalId -> nationalid
+      // Đã chuyển tên cột sang chữ thường cho hợp chuẩn Postgres
       const checkResult = await pool.query("SELECT id FROM customers WHERE TRIM(nationalid) = $1 AND TRIM(fullname) ILIKE $2", [trimmedCCCD, trimmedName]);
-      if (checkResult.rows.length > 0) {
-        return res.status(400).json({ success: false, message: "Khách hàng đã tồn tại trong hệ thống (trùng CCCD và Tên)" });
-      }
+      if (checkResult.rows.length > 0) return res.status(400).json({ success: false, message: "Khách hàng đã tồn tại (trùng CCCD và Tên)" });
 
-      // Sửa owner_id thành createdby ở câu lệnh INSERT
+      // Đã gỡ owner_id khỏi câu INSERT
       const info = await pool.query(`
         INSERT INTO customers (fullname, phonenumber, email, address, nationalid, status, createdby) 
         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
       `, [trimmedName, phoneNumber, email, address, trimmedCCCD, status || 'Mới', createdBy]);
       
-      // Log activity
       await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["customer", `Khách hàng mới ${trimmedName} đã được thêm vào hệ thống.`]);
-      
       res.json({ success: true, customerId: info.rows[0].id });
     } catch (err) {
-      console.error("Error creating customer:", err);
+      console.error("🔥 Lỗi thêm khách hàng:", err);
       res.status(500).json({ success: false, message: "Lỗi khi thêm khách hàng" });
     }
   });
@@ -327,12 +314,18 @@ async function startServer() {
   app.put("/api/customers/:id", async (req, res) => {
     const { id } = req.params;
     const { fullName, phoneNumber, email, address, nationalId, status } = req.body;
-    await pool.query(`
-      UPDATE customers 
-      SET fullName = $1, phoneNumber = $2, email = $3, address = $4, nationalId = $5, status = $6 
-      WHERE id = $7
-    `, [fullName, phoneNumber, email, address, nationalId, status, id]);
-    res.json({ success: true });
+    try {
+      // Postgres tự động lưu cột dạng chữ thường
+      await pool.query(`
+        UPDATE customers 
+        SET fullname = $1, phonenumber = $2, email = $3, address = $4, nationalid = $5, status = $6 
+        WHERE id = $7
+      `, [fullName, phoneNumber, email, address, nationalId, status, id]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("🔥 Lỗi cập nhật khách hàng:", err);
+      res.status(500).json({ success: false, message: "Lỗi khi cập nhật thông tin khách hàng" });
+    }
   });
 
   // Requests API
