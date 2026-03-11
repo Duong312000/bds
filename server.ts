@@ -229,23 +229,33 @@ async function startServer() {
     const { nationalId, fullName } = req.query;
     let customer = null;
     
-    if (nationalId && fullName) {
-      const nId = String(nationalId).trim();
-      const fName = String(fullName).trim();
-      const result = await pool.query(`
-        SELECT c.*, u.username as owner_name 
-        FROM customers c 
-        LEFT JOIN users u ON c.owner_id = u.id 
-        WHERE TRIM(c.nationalId) = $1 AND TRIM(c.fullName) ILIKE $2
-      `, [nId, fName]);
-      customer = result.rows[0];
+    try {
+      if (nationalId && fullName) {
+        const nId = String(nationalId).trim();
+        const fName = String(fullName).trim();
+        
+        // Sửa owner_id -> createdby, và sửa lại tên cột cho chuẩn Postgres
+        const result = await pool.query(`
+          SELECT c.*, u.username as owner_name 
+          FROM customers c 
+          LEFT JOIN users u ON c.createdby = u.id 
+          WHERE TRIM(c.nationalid) = $1 AND TRIM(c.fullname) ILIKE $2
+        `, [nId, fName]);
+        
+        customer = result.rows[0];
+      }
+      res.json({ exists: !!customer, customer });
+      
+    } catch (err) {
+      console.error("🔥 Lỗi tại /api/customers/check:", err);
+      // Có lỗi thì trả về false để không sập Frontend, không sập Server
+      res.json({ exists: false, customer: null });
     }
-    
-    res.json({ exists: !!customer, customer });
   });
 
   app.post("/api/customers", async (req, res) => {
-    const { fullName, phoneNumber, email, address, nationalId, status, owner_id, createdBy } = req.body;
+    // Lưu ý: Gỡ bỏ biến owner_id khỏi đây vì DB không có
+    const { fullName, phoneNumber, email, address, nationalId, status, createdBy } = req.body;
     
     // Server-side validation
     if (!fullName || !nationalId) {
@@ -259,27 +269,18 @@ async function startServer() {
       return res.status(400).json({ success: false, message: "Họ và tên phải có ít nhất 3 ký tự" });
     }
 
-    const nameRegex = /^[\p{L}\s]+$/u;
-    if (!nameRegex.test(trimmedName)) {
-      return res.status(400).json({ success: false, message: "Họ và tên không được chứa ký tự đặc biệt" });
-    }
-
-    const cccdRegex = /^\d{12}$/;
-    if (!cccdRegex.test(trimmedCCCD)) {
-      return res.status(400).json({ success: false, message: "Số CCCD phải bao gồm đúng 12 chữ số" });
-    }
-
     try {
-      // Server-side duplicate check
-      const checkResult = await pool.query("SELECT id FROM customers WHERE TRIM(nationalId) = $1 AND TRIM(fullName) ILIKE $2", [trimmedCCCD, trimmedName]);
+      // Sửa fullName -> fullname, nationalId -> nationalid
+      const checkResult = await pool.query("SELECT id FROM customers WHERE TRIM(nationalid) = $1 AND TRIM(fullname) ILIKE $2", [trimmedCCCD, trimmedName]);
       if (checkResult.rows.length > 0) {
         return res.status(400).json({ success: false, message: "Khách hàng đã tồn tại trong hệ thống (trùng CCCD và Tên)" });
       }
 
+      // Sửa owner_id thành createdby ở câu lệnh INSERT
       const info = await pool.query(`
-        INSERT INTO customers (fullName, phoneNumber, email, address, nationalId, status, owner_id, createdBy) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id
-      `, [trimmedName, phoneNumber, email, address, trimmedCCCD, status || 'Mới', owner_id, createdBy]);
+        INSERT INTO customers (fullname, phonenumber, email, address, nationalid, status, createdby) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+      `, [trimmedName, phoneNumber, email, address, trimmedCCCD, status || 'Mới', createdBy]);
       
       // Log activity
       await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["customer", `Khách hàng mới ${trimmedName} đã được thêm vào hệ thống.`]);
@@ -317,7 +318,7 @@ async function startServer() {
         LEFT JOIN customers c ON r.customer_id = c.id
         LEFT JOIN properties p ON r.property_id = p.id
         JOIN users u_req ON r.request_by = u_req.id
-        LEFT JOIN users u_owner ON c.owner_id = u_owner.id
+        LEFT JOIN users u_owner ON c.createdby = u_createdby
         LEFT JOIN users u_proc ON r.processed_by = u_proc.id
         ORDER BY r.created_at DESC
       `);
@@ -403,17 +404,17 @@ async function startServer() {
                 const { fullName, phoneNumber, email, address, nationalId, status: custStatus } = newData;
                 await client.query(`
                   UPDATE customers 
-                  SET fullName = $1, phoneNumber = $2, email = $3, address = $4, nationalId = $5, status = $6, owner_id = $7 
+                  SET fullName = $1, phoneNumber = $2, email = $3, address = $4, nationalId = $5, status = $6, createdby = $7 
                   WHERE id = $8
                 `, [fullName, phoneNumber, email, address, nationalId, custStatus, request.request_by, request.customer_id]);
               } else {
-                await client.query("UPDATE customers SET owner_id = $1 WHERE id = $2", [request.request_by, request.customer_id]);
+                await client.query("UPDATE customers SET createdby = $1 WHERE id = $2", [request.request_by, request.customer_id]);
               }
             } catch (err) {
-              await client.query("UPDATE customers SET owner_id = $1 WHERE id = $2", [request.request_by, request.customer_id]);
+              await client.query("UPDATE customers SET createdby = $1 WHERE id = $2", [request.request_by, request.customer_id]);
             }
           } else {
-            await client.query("UPDATE customers SET owner_id = $1 WHERE id = $2", [request.request_by, request.customer_id]);
+            await client.query("UPDATE customers SET createdby = $1 WHERE id = $2", [request.request_by, request.customer_id]);
           }
           await client.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Yêu cầu phân quyền khách hàng #${request.customer_id} đã được chấp nhận bởi ${processed_by}.`]);
         }
