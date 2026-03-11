@@ -94,7 +94,7 @@ export const Login = ({ onLogin }: LoginProps) => {
           </div>
           <div className="flex flex-col">
             <span className="text-3xl font-black tracking-tighter text-white leading-none">iHOUZZ</span>
-            <span className="text-[10px] font-bold text-orange-500 uppercase tracking-[0.2em] mt-1">BĐS HOUZZ UNI</span>
+            <span className="text-[10px] font-bold text-orange-500 uppercase tracking-[0.2em] mt-1">BĐS iHOUZZ</span>
           </div>
         </div>
       </header>
