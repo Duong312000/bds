@@ -96,7 +96,7 @@ async function initDB() {
       );
 
       -- Bảng requests và activities không có trong ERD, 
-      -- nhưng Frontend của bạn cần nó, tôi giữ lại và tối ưu luôn:
+      -- nhưng Frontend của hệ thống cần nó, nên t giữ lại và tối ưu luôn:
       CREATE TABLE IF NOT EXISTS requests (
         id SERIAL PRIMARY KEY,
         customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
