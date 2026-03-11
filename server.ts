@@ -226,6 +226,37 @@ async function startServer() {
     }
   });
 
+  // API Lấy chi tiết 1 khách hàng
+  app.get("/api/customers/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const result = await pool.query(`
+        SELECT 
+          c.id, 
+          c.fullname AS "fullName", 
+          c.phonenumber AS "phoneNumber", 
+          c.email, 
+          c.address, 
+          c.nationalid AS "nationalId", 
+          c.status, 
+          c.createdby AS "createdBy", 
+          c.createddate AS "createdDate",
+          u.username as owner_name
+        FROM customers c
+        LEFT JOIN users u ON c.createdby = u.id
+        WHERE c.id = $1
+      `, [id]);
+      
+      if (result.rows.length === 0) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy khách hàng" });
+      }
+      res.json(result.rows[0]);
+    } catch (err) {
+      console.error("🔥 Lỗi xem chi tiết khách hàng:", err);
+      res.status(500).json({ success: false, message: "Lỗi hệ thống" });
+    }
+  });
+
   app.get("/api/customers/check", async (req, res) => {
     const { nationalId, fullName } = req.query;
     let customer = null;
