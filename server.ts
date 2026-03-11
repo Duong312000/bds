@@ -63,10 +63,11 @@ async function initDB() {
       );
 
       CREATE TABLE IF NOT EXISTS reservations (
-        id SERIAL PRIMARY KEY, -- Tương đương reservation_id trong ERD
+        id SERIAL PRIMARY KEY,
         customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
         property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE,
-        sales_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- Tương đương FK id trong ERD
+        sales_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reservation_code TEXT, -- BỔ SUNG DÒNG NÀY VÀO ĐÂY NHÉ
         status TEXT DEFAULT 'Active',
         expires_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
