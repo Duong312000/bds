@@ -109,6 +109,15 @@ async function initDB() {
         processed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+      
+      CREATE TABLE IF NOT EXISTS payments (
+        id SERIAL PRIMARY KEY,
+        contract_id INTEGER REFERENCES contracts(id) ON DELETE CASCADE,
+        amount BIGINT NOT NULL,
+        due_date DATE,
+        status TEXT DEFAULT 'Pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
 
       CREATE TABLE IF NOT EXISTS activities (
         id SERIAL PRIMARY KEY,
