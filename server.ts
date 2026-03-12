@@ -404,7 +404,7 @@ async function startServer() {
       const result = await pool.query(`
         SELECT 
           r.*, 
-          c.fullName as customer_name, 
+          c.fullname as customer_name, 
           p.title as property_title,
           u_req.username as requester_name,
           u_owner.username as current_owner_name,
@@ -413,7 +413,8 @@ async function startServer() {
         LEFT JOIN customers c ON r.customer_id = c.id
         LEFT JOIN properties p ON r.property_id = p.id
         JOIN users u_req ON r.request_by = u_req.id
-        LEFT JOIN users u_owner ON c.createdby = u_createdby
+        -- CHỖ NÀY ĐÃ SỬA TỪ u_createdby THÀNH u_owner.id
+        LEFT JOIN users u_owner ON c.createdby = u_owner.id 
         LEFT JOIN users u_proc ON r.processed_by = u_proc.id
         ORDER BY r.created_at DESC
       `);
