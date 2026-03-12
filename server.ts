@@ -356,9 +356,9 @@ async function startServer() {
   app.use("/api/customers/:id/assign", async (req, res) => {
     const { id } = req.params;
     // Bắt mọi biến Frontend có thể gửi lên (user_id, owner_id, hoặc createdBy)
-    const { user_id, owner_id, createdBy } = req.body; 
+    const { user_id, createdby, createdBy } = req.body; 
     
-    const targetUserId = user_id || owner_id || createdBy;
+    const targetUserId = user_id || createdby || createdBy;
 
     if (!targetUserId) {
        return res.status(400).json({ success: false, message: "Thiếu ID nhân viên để phân quyền" });
