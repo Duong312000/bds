@@ -462,7 +462,7 @@ export const Customers = ({ user }: CustomersProps) => {
                     </div>
 
                     <div className="grid grid-cols-1 gap-4">
-                      {(!duplicateCustomer.owner_id || duplicateCustomer.owner_id === 0 || duplicateCustomer.owner_id === user?.id) ? (
+                      {(!duplicateCustomer.createdBy || duplicateCustomer.createdBy === 0 || duplicateCustomer.createdBy === user?.id) ? (
                         <button 
                           onClick={handleUpdateInformation}
                           disabled={loading}
