@@ -136,14 +136,16 @@ export const api = {
     const res = await fetch('/api/deposits');
     return res.json();
   },
-  createDeposit: async (data: { reservation_id: number; amount: number }): Promise<{ success: boolean; depositId?: number; message?: string }> => {
-    const res = await fetch('/api/deposits', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    return res.json();
-  },
+  createDeposit: async (
+  data: { reservation_id: number; amount: number; installments: number }
+): Promise<{ success: boolean; depositId?: number; message?: string }> => {
+  const res = await fetch('/api/deposits', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+},
   confirmContract: async (id: number, step: 'customer' | 'vendor', confirmed: boolean): Promise<{ success: boolean; message?: string }> => {
     const res = await fetch(`/api/contracts/${id}/confirm`, {
       method: 'PATCH',
