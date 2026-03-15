@@ -60,8 +60,6 @@ export const Transactions = ({ user }: TransactionsProps) => {
   useEffect(() => {
     fetchData();
   }, []);
-  const [confirmDepositId, setConfirmDepositId] = useState<number | null>(null);
-  const [installments, setInstallments] = useState(12);
   const [installments, setInstallments] = useState(12);
   const handleConfirmDeposit = async (reservationId: number) => {
   if (!Number.isInteger(Number(installments)) || Number(installments) <= 0) {
@@ -211,6 +209,15 @@ export const Transactions = ({ user }: TransactionsProps) => {
                       isAccountant ? (
                         confirmDepositId === r.id ? (
                           <div className="flex items-center justify-end gap-2 animate-in fade-in zoom-in-95 duration-200">
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={installments}
+                              onChange={(e) => setInstallments(Number(e.target.value))}
+                              className="w-24 px-2 py-1 border border-slate-300 rounded text-xs"
+                              placeholder="Số đợt"
+                            />
                             <span className="text-[10px] font-bold text-slate-500 uppercase">Xác nhận tiền về?</span>
                             <button
                               onClick={() => handleConfirmDeposit(r.id)}
@@ -220,7 +227,10 @@ export const Transactions = ({ user }: TransactionsProps) => {
                               {loading ? '...' : 'Có'}
                             </button>
                             <button
-                              onClick={() => setConfirmDepositId(null)}
+                              onClick={() => {
+                                setConfirmDepositId(null);
+                                setInstallments(12);
+                              }}
                               disabled={loading}
                               className="px-3 py-1 bg-slate-200 text-slate-700 text-[10px] font-bold rounded hover:bg-slate-300"
                             >
