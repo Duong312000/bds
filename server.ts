@@ -785,34 +785,73 @@ async function startServer() {
   });
 
   app.post("/api/contracts", async (req, res) => {
-    const { customer_id, property_id, total_value, deposit, installments } = req.body;
-    try {
-      const info = await pool.query(`
-        INSERT INTO contracts (customer_id, property_id, total_value, deposit_id)
-        VALUES ($1, $2, $3, $4) RETURNING id
-      `, [customer_id, property_id, total_value, null]); // Adjusted deposit param for PG schema
-      
-      const contractId = info.rows[0].id;
-      
-      const custResult = await pool.query("SELECT fullName FROM customers WHERE id = $1", [customer_id]);
-      const customer = custResult.rows[0];
-      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["contract", `Hợp đồng mới được tạo cho khách hàng ${customer.fullName}`]);
+  const client = await pool.connect();
 
-      const installmentAmount = (total_value - deposit) / installments;
-      for (let i = 1; i <= installments; i++) {
-        const dueDate = new Date();
-        dueDate.setMonth(dueDate.getMonth() + i);
-        await pool.query(`
-          INSERT INTO payments (contract_id, amount, due_date)
-          VALUES ($1, $2, $3)
-        `, [contractId, installmentAmount, dueDate.toISOString().split('T')[0]]);
-      }
+  try {
+    const totalValue = Number(req.body.total_value);
+    const deposit = Number(req.body.deposit || 0);
+    const installments = Number(req.body.installments);
+    const customerId = Number(req.body.customer_id);
+    const propertyId = Number(req.body.property_id);
 
-      res.json({ success: true, contractId });
-    } catch (err) {
-      res.status(500).json({ success: false, message: "Lỗi khi tạo hợp đồng" });
+    if (!customerId || !propertyId) {
+      return res.status(400).json({ success: false, message: "Thiếu customer_id hoặc property_id" });
     }
-  });
+
+    if (!Number.isFinite(totalValue) || totalValue <= 0) {
+      return res.status(400).json({ success: false, message: "total_value không hợp lệ" });
+    }
+
+    if (!Number.isFinite(deposit) || deposit < 0) {
+      return res.status(400).json({ success: false, message: "deposit không hợp lệ" });
+    }
+
+    if (!Number.isInteger(installments) || installments <= 0) {
+      return res.status(400).json({ success: false, message: "installments phải là số nguyên > 0" });
+    }
+
+    if (deposit > totalValue) {
+      return res.status(400).json({ success: false, message: "deposit không được lớn hơn total_value" });
+    }
+
+    await client.query("BEGIN");
+
+    const contractResult = await client.query(`
+      INSERT INTO contracts (customer_id, property_id, total_value, deposit_id)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id
+    `, [customerId, propertyId, totalValue, null]);
+
+    const contractId = contractResult.rows[0].id;
+
+    const remaining = totalValue - deposit;
+
+    // Chia đều nhưng vẫn giữ integer cho BIGINT
+    const baseAmount = Math.floor(remaining / installments);
+    const remainder = remaining % installments;
+
+    for (let i = 1; i <= installments; i++) {
+      const dueDate = new Date();
+      dueDate.setMonth(dueDate.getMonth() + i);
+
+      const amount = baseAmount + (i <= remainder ? 1 : 0);
+
+      await client.query(`
+        INSERT INTO payments (contract_id, amount, due_date, status)
+        VALUES ($1, $2, $3, $4)
+      `, [contractId, amount, dueDate.toISOString().split("T")[0], "Pending"]);
+    }
+
+    await client.query("COMMIT");
+    res.json({ success: true, contractId });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Lỗi khi tạo hợp đồng/payment:", err);
+    res.status(500).json({ success: false, message: "Lỗi khi tạo hợp đồng" });
+  } finally {
+    client.release();
+  }
+});
 
   app.patch("/api/contracts/:id/status", async (req, res) => {
     const { id } = req.params;
