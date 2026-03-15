@@ -138,7 +138,7 @@ export const api = {
   },
   createDeposit: async (
   data: { reservation_id: number; amount: number; installments: number }
-): Promise<{ success: boolean; depositId?: number; message?: string }> => {
+): Promise<{ success: boolean; depositId?: number; contractId?: number; message?: string }> => {
   const res = await fetch('/api/deposits', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
