@@ -266,23 +266,27 @@ async function startServer() {
     }
   });
 
+  // 1. API KIỂM TRA TRÙNG (Bây giờ CHỈ check CCCD)
   app.get("/api/customers/check", async (req, res) => {
-    const { nationalId, fullName } = req.query;
+    // Dù Frontend có gửi fullName lên thì Backend cũng chỉ dùng nationalId
+    const { nationalId } = req.query; 
     let customer = null;
     
     try {
-      if (nationalId && fullName) {
+      if (nationalId) {
         const nId = String(nationalId).trim();
-        const fName = String(fullName).trim();
         
-        // Đã bỏ owner_id, dùng đúng chuẩn chữ thường
+        // Trả về thêm createdBy để Frontend biết ai đang quản lý khách này
         const result = await pool.query(`
           SELECT 
             c.id, c.fullname AS "fullName", c.phonenumber AS "phoneNumber", 
-            c.email, c.address, c.nationalid AS "nationalId", c.status
+            c.email, c.address, c.nationalid AS "nationalId", c.status,
+            c.createdby AS "createdBy", u.username as owner_name
           FROM customers c 
-          WHERE TRIM(c.nationalid) = $1 AND TRIM(c.fullname) ILIKE $2
-        `, [nId, fName]);
+          LEFT JOIN users u ON c.createdby = u.id
+          WHERE TRIM(c.nationalid) = $1
+        `, [nId]);
+        
         customer = result.rows[0];
       }
       res.json({ exists: !!customer, customer });
@@ -292,8 +296,8 @@ async function startServer() {
     }
   });
 
+  // 2. API THÊM KHÁCH HÀNG (Bây giờ CHỈ check CCCD)
   app.post("/api/customers", async (req, res) => {
-    // Đã gỡ bỏ owner_id ra khỏi req.body vì không tồn tại
     const { fullName, phoneNumber, email, address, nationalId, status, createdBy } = req.body;
     
     if (!fullName || !nationalId) return res.status(400).json({ success: false, message: "Họ tên và CCCD là bắt buộc" });
@@ -302,11 +306,10 @@ async function startServer() {
     const trimmedCCCD = String(nationalId).trim();
 
     try {
-      // Đã chuyển tên cột sang chữ thường cho hợp chuẩn Postgres
-      const checkResult = await pool.query("SELECT id FROM customers WHERE TRIM(nationalid) = $1 AND TRIM(fullname) ILIKE $2", [trimmedCCCD, trimmedName]);
-      if (checkResult.rows.length > 0) return res.status(400).json({ success: false, message: "Khách hàng đã tồn tại (trùng CCCD và Tên)" });
+      // Chỉ check trùng CCCD
+      const checkResult = await pool.query("SELECT id FROM customers WHERE TRIM(nationalid) = $1", [trimmedCCCD]);
+      if (checkResult.rows.length > 0) return res.status(400).json({ success: false, message: "Khách hàng đã tồn tại (Trùng số CCCD)" });
 
-      // Đã gỡ owner_id khỏi câu INSERT
       const info = await pool.query(`
         INSERT INTO customers (fullname, phonenumber, email, address, nationalid, status, createdby) 
         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
