@@ -97,8 +97,10 @@ export const Customers = ({ user }: CustomersProps) => {
     setLoading(true);
     
     try {
-      // 1. Check duplicate
-      const check = await api.checkDuplicate('', nationalId, fullName);
+      // 1. Check duplicate (Gọi thẳng fetch để không bị lỗi từ api.ts)
+      const checkRes = await fetch(`/api/customers/check?nationalId=${nationalId}`);
+      const check = await checkRes.json();
+      
       if (check.exists && check.customer) {
         setDuplicateCustomer(check.customer);
         setLoading(false);
