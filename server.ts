@@ -235,37 +235,6 @@ async function startServer() {
     }
   });
 
-  // API Lấy chi tiết 1 khách hàng
-  app.get("/api/customers/:id", async (req, res) => {
-    const { id } = req.params;
-    try {
-      const result = await pool.query(`
-        SELECT 
-          c.id, 
-          c.fullname AS "fullName", 
-          c.phonenumber AS "phoneNumber", 
-          c.email, 
-          c.address, 
-          c.nationalid AS "nationalId", 
-          c.status, 
-          c.createdby AS "createdBy", 
-          c.createddate AS "createdDate",
-          u.username as owner_name
-        FROM customers c
-        LEFT JOIN users u ON c.createdby = u.id
-        WHERE c.id = $1
-      `, [id]);
-      
-      if (result.rows.length === 0) {
-        return res.status(404).json({ success: false, message: "Không tìm thấy khách hàng" });
-      }
-      res.json(result.rows[0]);
-    } catch (err) {
-      console.error("🔥 Lỗi xem chi tiết khách hàng:", err);
-      res.status(500).json({ success: false, message: "Lỗi hệ thống" });
-    }
-  });
-
   // 1. API KIỂM TRA TRÙNG (Bây giờ CHỈ check CCCD)
   app.get("/api/customers/check", async (req, res) => {
     // Dù Frontend có gửi fullName lên thì Backend cũng chỉ dùng nationalId
@@ -296,7 +265,7 @@ async function startServer() {
     }
   });
 
-  // 2. API THÊM KHÁCH HÀNG (Bây giờ CHỈ check CCCD)
+   // 2. API THÊM KHÁCH HÀNG (Bây giờ CHỈ check CCCD)
   app.post("/api/customers", async (req, res) => {
     const { fullName, phoneNumber, email, address, nationalId, status, createdBy } = req.body;
     
@@ -322,8 +291,8 @@ async function startServer() {
       res.status(500).json({ success: false, message: "Lỗi khi thêm khách hàng" });
     }
   });
-  
-  // 1. API XEM CHI TIẾT KHÁCH HÀNG
+
+  // API Lấy chi tiết 1 khách hàng
   app.get("/api/customers/:id", async (req, res) => {
     const { id } = req.params;
     try {
@@ -381,6 +350,23 @@ async function startServer() {
     } catch (err) {
       console.error("🔥 Lỗi phân quyền khách hàng:", err);
       res.status(500).json({ success: false, message: "Lỗi khi phân quyền" });
+    }
+  });
+
+  // 5. Cập nhật khách hàng
+  app.put("/api/customers/:id", async (req, res) => {
+    const { id } = req.params;
+    const { fullName, phoneNumber, email, address, nationalId, status } = req.body;
+    try {
+      await pool.query(`
+        UPDATE customers 
+        SET fullname = $1, phonenumber = $2, email = $3, address = $4, nationalid = $5, status = $6 
+        WHERE id = $7
+      `, [fullName, phoneNumber, email, address, nationalId, status, id]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("🔥 Lỗi cập nhật khách hàng:", err);
+      res.status(500).json({ success: false, message: "Lỗi khi cập nhật" });
     }
   });
   
