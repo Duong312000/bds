@@ -60,25 +60,38 @@ export const Transactions = ({ user }: TransactionsProps) => {
   useEffect(() => {
     fetchData();
   }, []);
-
+  const [confirmDepositId, setConfirmDepositId] = useState<number | null>(null);
+  const [installments, setInstallments] = useState(12);
+  const [installments, setInstallments] = useState(12);
   const handleConfirmDeposit = async (reservationId: number) => {
-    setLoading(true);
-    try {
-      const res = await api.createDeposit({ reservation_id: reservationId, amount: 50000000 }); // Default deposit 50M
-      if (res.success) {
-        setNotification({ message: 'Xác nhận đặt cọc thành công! Hợp đồng đã được tạo.', type: 'success' });
-        await fetchData();
-        setConfirmDepositId(null);
-      } else {
-        setNotification({ message: res.message || 'Lỗi khi xác nhận đặt cọc', type: 'error' });
-      }
-    } catch (error) {
-      console.error('Confirm deposit error:', error);
-      setNotification({ message: 'Lỗi kết nối khi xác nhận đặt cọc', type: 'error' });
-    } finally {
-      setLoading(false);
+  if (!Number.isInteger(Number(installments)) || Number(installments) <= 0) {
+    setNotification({ message: 'Số đợt thanh toán phải là số nguyên > 0', type: 'error' });
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const res = await api.createDeposit({
+      reservation_id: reservationId,
+      amount: 50000000,
+      installments: Number(installments),
+    });
+
+    if (res.success) {
+      setNotification({ message: 'Xác nhận đặt cọc thành công! Hợp đồng và lịch thanh toán đã được tạo.', type: 'success' });
+      await fetchData();
+      setConfirmDepositId(null);
+      setInstallments(12);
+    } else {
+      setNotification({ message: res.message || 'Lỗi khi xác nhận đặt cọc', type: 'error' });
     }
-  };
+  } catch (error) {
+    console.error('Confirm deposit error:', error);
+    setNotification({ message: 'Lỗi kết nối khi xác nhận đặt cọc', type: 'error' });
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleConfirmContract = async (contractId: number, step: 'customer' | 'vendor') => {
     setLoading(true);
