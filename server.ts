@@ -209,74 +209,32 @@ async function startServer() {
     }
   });
 
-  // Customers API
+ // CUSTOMERS API (ĐÃ SẮP XẾP CHUẨN THỨ TỰ)
+  // ==========================================
+
+  // 1. Lấy danh sách
   app.get("/api/customers", async (req, res) => {
     try {
       const result = await pool.query(`
-        SELECT 
-          c.id, 
-          c.fullname AS "fullName", 
-          c.phonenumber AS "phoneNumber", 
-          c.email, 
-          c.address, 
-          c.nationalid AS "nationalId", 
-          c.status, 
-          c.createdby AS "createdBy", 
-          c.createddate AS "createdDate",
-          u.username as owner_name
-        FROM customers c
-        LEFT JOIN users u ON c.createdby = u.id
+        SELECT c.*, u.username as owner_name 
+        FROM customers c 
+        LEFT JOIN users u ON c.createdby = u.id 
         ORDER BY c.id DESC
       `);
       res.json(result.rows);
     } catch (err) {
       console.error("🔥 Lỗi tại /api/customers:", err);
-      res.json([]); 
+      res.json([]);
     }
   });
 
-  // API Lấy chi tiết 1 khách hàng
-  app.get("/api/customers/:id", async (req, res) => {
-    const { id } = req.params;
-    try {
-      const result = await pool.query(`
-        SELECT 
-          c.id, 
-          c.fullname AS "fullName", 
-          c.phonenumber AS "phoneNumber", 
-          c.email, 
-          c.address, 
-          c.nationalid AS "nationalId", 
-          c.status, 
-          c.createdby AS "createdBy", 
-          c.createddate AS "createdDate",
-          u.username as owner_name
-        FROM customers c
-        LEFT JOIN users u ON c.createdby = u.id
-        WHERE c.id = $1
-      `, [id]);
-      
-      if (result.rows.length === 0) {
-        return res.status(404).json({ success: false, message: "Không tìm thấy khách hàng" });
-      }
-      res.json(result.rows[0]);
-    } catch (err) {
-      console.error("🔥 Lỗi xem chi tiết khách hàng:", err);
-      res.status(500).json({ success: false, message: "Lỗi hệ thống" });
-    }
-  });
-
-  // 1. API KIỂM TRA TRÙNG (Bây giờ CHỈ check CCCD)
+  // 2. Kiểm tra trùng lặp (BẮT BUỘC PHẢI NẰM TRÊN CÁC API CÓ /:id)
   app.get("/api/customers/check", async (req, res) => {
-    // Dù Frontend có gửi fullName lên thì Backend cũng chỉ dùng nationalId
-    const { nationalId } = req.query; 
+    const { nationalId } = req.query;
     let customer = null;
-    
     try {
       if (nationalId) {
         const nId = String(nationalId).trim();
-        
-        // Trả về thêm createdBy để Frontend biết ai đang quản lý khách này
         const result = await pool.query(`
           SELECT 
             c.id, c.fullname AS "fullName", c.phonenumber AS "phoneNumber", 
@@ -286,7 +244,6 @@ async function startServer() {
           LEFT JOIN users u ON c.createdby = u.id
           WHERE TRIM(c.nationalid) = $1
         `, [nId]);
-        
         customer = result.rows[0];
       }
       res.json({ exists: !!customer, customer });
@@ -296,57 +253,42 @@ async function startServer() {
     }
   });
 
-  // 2. API THÊM KHÁCH HÀNG (Bây giờ CHỈ check CCCD)
+  // 3. Thêm khách hàng mới
   app.post("/api/customers", async (req, res) => {
     const { fullName, phoneNumber, email, address, nationalId, status, createdBy } = req.body;
-    
     if (!fullName || !nationalId) return res.status(400).json({ success: false, message: "Họ tên và CCCD là bắt buộc" });
-
     const trimmedName = String(fullName).trim();
     const trimmedCCCD = String(nationalId).trim();
-
     try {
-      // Chỉ check trùng CCCD
       const checkResult = await pool.query("SELECT id FROM customers WHERE TRIM(nationalid) = $1", [trimmedCCCD]);
       if (checkResult.rows.length > 0) return res.status(400).json({ success: false, message: "Khách hàng đã tồn tại (Trùng số CCCD)" });
-
       const info = await pool.query(`
         INSERT INTO customers (fullname, phonenumber, email, address, nationalid, status, createdby) 
         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
       `, [trimmedName, phoneNumber, email, address, trimmedCCCD, status || 'Mới', createdBy]);
-      
-      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["customer", `Khách hàng mới ${trimmedName} đã được thêm vào hệ thống.`]);
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["customer", `Khách hàng mới ${trimmedName} đã được thêm.`]);
       res.json({ success: true, customerId: info.rows[0].id });
     } catch (err) {
       console.error("🔥 Lỗi thêm khách hàng:", err);
       res.status(500).json({ success: false, message: "Lỗi khi thêm khách hàng" });
     }
   });
-  
-  // 1. API XEM CHI TIẾT KHÁCH HÀNG
+
+  // 4. Lấy chi tiết 1 khách hàng (ĐÃ ĐƯỢC ĐẨY XUỐNG DƯỚI)
   app.get("/api/customers/:id", async (req, res) => {
     const { id } = req.params;
     try {
       const result = await pool.query(`
         SELECT 
-          c.id, 
-          c.fullname AS "fullName", 
-          c.phonenumber AS "phoneNumber", 
-          c.email, 
-          c.address, 
-          c.nationalid AS "nationalId", 
-          c.status, 
-          c.createdby AS "createdBy", 
-          c.createddate AS "createdDate",
+          c.id, c.fullname AS "fullName", c.phonenumber AS "phoneNumber", 
+          c.email, c.address, c.nationalid AS "nationalId", c.status, 
+          c.createdby AS "createdBy", c.createddate AS "createdDate",
           u.username as owner_name
         FROM customers c
         LEFT JOIN users u ON c.createdby = u.id
         WHERE c.id = $1
       `, [id]);
-      
-      if (result.rows.length === 0) {
-        return res.status(404).json({ success: false, message: "Không tìm thấy khách hàng" });
-      }
+      if (result.rows.length === 0) return res.status(404).json({ success: false, message: "Không tìm thấy khách hàng" });
       res.json(result.rows[0]);
     } catch (err) {
       console.error("🔥 Lỗi xem chi tiết khách hàng:", err);
@@ -354,41 +296,11 @@ async function startServer() {
     }
   });
 
-  // 2. API PHÂN QUYỀN (ASSIGN) KHÁCH HÀNG CHO NHÂN VIÊN
-  // Dùng app.use để hứng mọi loại Method (POST, PUT, PATCH) từ Frontend
-  app.use("/api/customers/:id/assign", async (req, res) => {
-    const { id } = req.params;
-    // Bắt mọi biến Frontend có thể gửi lên (user_id, owner_id, hoặc createdBy)
-    const { user_id, createdby, createdBy } = req.body; 
-    
-    const targetUserId = user_id || createdby || createdBy;
-
-    if (!targetUserId) {
-       return res.status(400).json({ success: false, message: "Thiếu ID nhân viên để phân quyền" });
-    }
-
-    try {
-      // Cập nhật người quản lý (createdby) cho khách hàng này
-      await pool.query("UPDATE customers SET createdby = $1 WHERE id = $2", [targetUserId, id]);
-      
-      // Ghi lại lịch sử hệ thống
-      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", [
-          "system", 
-          `Khách hàng #${id} đã được phân quyền quản lý cho nhân viên #${targetUserId}.`
-      ]);
-
-      res.json({ success: true });
-    } catch (err) {
-      console.error("🔥 Lỗi phân quyền khách hàng:", err);
-      res.status(500).json({ success: false, message: "Lỗi khi phân quyền" });
-    }
-  });
-  
+  // 5. Cập nhật khách hàng
   app.put("/api/customers/:id", async (req, res) => {
     const { id } = req.params;
     const { fullName, phoneNumber, email, address, nationalId, status } = req.body;
     try {
-      // Postgres tự động lưu cột dạng chữ thường
       await pool.query(`
         UPDATE customers 
         SET fullname = $1, phonenumber = $2, email = $3, address = $4, nationalid = $5, status = $6 
@@ -397,9 +309,28 @@ async function startServer() {
       res.json({ success: true });
     } catch (err) {
       console.error("🔥 Lỗi cập nhật khách hàng:", err);
-      res.status(500).json({ success: false, message: "Lỗi khi cập nhật thông tin khách hàng" });
+      res.status(500).json({ success: false, message: "Lỗi khi cập nhật" });
     }
   });
+
+  // 6. Phân quyền quản lý
+  app.use("/api/customers/:id/assign", async (req, res) => {
+    const { id } = req.params;
+    const { user_id, owner_id, createdBy } = req.body; 
+    const targetUserId = user_id || owner_id || createdBy;
+    if (!targetUserId) return res.status(400).json({ success: false, message: "Thiếu ID nhân viên" });
+    try {
+      await pool.query("UPDATE customers SET createdby = $1 WHERE id = $2", [targetUserId, id]);
+      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Khách hàng #${id} đã được phân quyền quản lý cho nhân viên #${targetUserId}.`]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("🔥 Lỗi phân quyền khách hàng:", err);
+      res.status(500).json({ success: false, message: "Lỗi khi phân quyền" });
+    }
+  });
+
+  // ==========================================
+  // KẾT THÚC KHU VỰC CUSTOMERS API
 
   // Requests API
   app.get("/api/requests", async (req, res) => {
