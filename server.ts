@@ -678,43 +678,159 @@ async function startServer() {
   });
 
   app.post("/api/deposits", async (req, res) => {
-    const { reservation_id, amount } = req.body;
-    try {
-      const resResult = await pool.query("SELECT * FROM reservations WHERE id = $1", [reservation_id]);
-      const reservation = resResult.rows[0];
-      
-      if (!reservation || reservation.status !== 'Active') {
-        return res.status(400).json({ success: false, message: "Phiếu giữ chỗ không hợp lệ hoặc đã hết hạn" });
-      }
+  const { reservation_id, amount, installments } = req.body;
+  const client = await pool.connect();
 
-      const info = await pool.query(`
-        INSERT INTO deposits (reservation_id, customer_id, property_id, amount, status)
-        VALUES ($1, $2, $3, $4, $5) RETURNING id
-      `, [reservation_id, reservation.customer_id, reservation.property_id, amount, 'Success']);
+  try {
+    const reservationId = Number(reservation_id);
+    const depositAmount = Number(amount);
+    const installmentCount = Number(installments);
 
-      const depositId = info.rows[0].id;
-
-      await pool.query("UPDATE reservations SET status = 'Converted' WHERE id = $1", [reservation_id]);
-      await pool.query("UPDATE properties SET status = 'Đặt cọc' WHERE id = $1", [reservation.property_id]);
-
-      const propResult = await pool.query("SELECT price FROM properties WHERE id = $1", [reservation.property_id]);
-      const property = propResult.rows[0];
-      
-      const contractInfo = await pool.query(`
-        INSERT INTO contracts (customer_id, property_id, deposit_id, total_value, status)
-        VALUES ($1, $2, $3, $4, $5) RETURNING id
-      `, [reservation.customer_id, reservation.property_id, depositId, property.price, 'Draft']);
-
-      const custResult = await pool.query("SELECT fullName FROM customers WHERE id = $1", [reservation.customer_id]);
-      const customer = custResult.rows[0];
-      await pool.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["contract", `Hệ thống đã tự động tạo hợp đồng cho khách hàng ${customer.fullName} sau khi đặt cọc thành công`]);
-
-      res.json({ success: true, depositId, contractId: contractInfo.rows[0].id });
-    } catch (err) {
-      console.error("Error creating deposit:", err);
-      res.status(500).json({ success: false, message: "Lỗi khi xác nhận đặt cọc" });
+    if (!reservationId || !Number.isFinite(depositAmount) || depositAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "reservation_id hoặc amount không hợp lệ"
+      });
     }
-  });
+
+    if (!Number.isInteger(installmentCount) || installmentCount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "installments phải là số nguyên > 0"
+      });
+    }
+
+    await client.query("BEGIN");
+
+    const resResult = await client.query(
+      "SELECT * FROM reservations WHERE id = $1",
+      [reservationId]
+    );
+    const reservation = resResult.rows[0];
+
+    if (!reservation || reservation.status !== "Active") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        success: false,
+        message: "Phiếu giữ chỗ không hợp lệ hoặc đã hết hạn"
+      });
+    }
+
+    const propResult = await client.query(
+      "SELECT price FROM properties WHERE id = $1",
+      [reservation.property_id]
+    );
+    const property = propResult.rows[0];
+
+    if (!property) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy bất động sản"
+      });
+    }
+
+    const totalValue = Number(property.price);
+
+    if (depositAmount > totalValue) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        success: false,
+        message: "Tiền đặt cọc không được lớn hơn giá trị bất động sản"
+      });
+    }
+
+    const depositResult = await client.query(`
+      INSERT INTO deposits (reservation_id, customer_id, property_id, amount, status)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
+    `, [
+      reservationId,
+      reservation.customer_id,
+      reservation.property_id,
+      depositAmount,
+      "Success"
+    ]);
+
+    const depositId = depositResult.rows[0].id;
+
+    await client.query(
+      "UPDATE reservations SET status = 'Converted' WHERE id = $1",
+      [reservationId]
+    );
+    await client.query(
+      "UPDATE properties SET status = 'Đặt cọc' WHERE id = $1",
+      [reservation.property_id]
+    );
+
+    const contractResult = await client.query(`
+      INSERT INTO contracts (customer_id, property_id, deposit_id, total_value, status)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
+    `, [
+      reservation.customer_id,
+      reservation.property_id,
+      depositId,
+      totalValue,
+      "Draft"
+    ]);
+
+    const contractId = contractResult.rows[0].id;
+
+    // Chia đều tiền còn lại thành số nguyên để hợp với BIGINT
+    const remaining = totalValue - depositAmount;
+    const baseAmount = Math.floor(remaining / installmentCount);
+    const remainder = remaining % installmentCount;
+
+    for (let i = 1; i <= installmentCount; i++) {
+      const dueDate = new Date();
+      dueDate.setMonth(dueDate.getMonth() + i);
+
+      const paymentAmount = baseAmount + (i <= remainder ? 1 : 0);
+
+      await client.query(`
+        INSERT INTO payments (contract_id, amount, due_date, status)
+        VALUES ($1, $2, $3, $4)
+      `, [
+        contractId,
+        paymentAmount,
+        dueDate.toISOString().split("T")[0],
+        "Pending"
+      ]);
+    }
+
+    const custResult = await client.query(
+      "SELECT fullName FROM customers WHERE id = $1",
+      [reservation.customer_id]
+    );
+    const customer = custResult.rows[0];
+
+    await client.query(
+      "INSERT INTO activities (type, content) VALUES ($1, $2)",
+      [
+        "contract",
+        `Hệ thống đã tự động tạo hợp đồng và lịch thanh toán cho khách hàng ${customer?.fullname || customer?.fullName || "Khách hàng"} sau khi đặt cọc thành công`
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    res.json({
+      success: true,
+      depositId,
+      contractId
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Error creating deposit:", err);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi xác nhận đặt cọc"
+    });
+  } finally {
+    client.release();
+  }
+});
 
   // Contract Confirmation API
   app.patch("/api/contracts/:id/confirm", async (req, res) => {
