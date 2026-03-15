@@ -677,6 +677,8 @@ async function startServer() {
     }
   });
 
+  installments=12
+
   app.post("/api/deposits", async (req, res) => {
   const { reservation_id, amount, installments } = req.body;
   const client = await pool.connect();
