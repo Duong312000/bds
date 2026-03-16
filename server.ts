@@ -677,7 +677,7 @@ async function startServer() {
 
   try {
     const reservationId = String(reservation_id).trim();
-    const depositAmount = Number(amount);
+    const depositAmount = Number(property.price)/10;
     const installmentCount = Number(installments);
 
     if (!reservationId || !Number.isFinite(depositAmount) || depositAmount <= 0) {
