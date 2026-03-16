@@ -63,7 +63,7 @@ async function initDB() {
       );
       
       CREATE TABLE IF NOT EXISTS reservations (
-        reservation_code TEXT PRIMARY KEY,
+        id TEXT PRIMARY KEY,
         customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
         property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
         users_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
