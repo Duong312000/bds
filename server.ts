@@ -90,7 +90,7 @@ async function initDB() {
         property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
         customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
         deposit_id INTEGER UNIQUE REFERENCES deposits(id) ON DELETE SET NULL,
-        sales_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        users_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         total_value BIGINT NOT NULL,
         status TEXT DEFAULT 'Draft',
         file_url TEXT,
@@ -598,7 +598,7 @@ async function startServer() {
 
   app.post("/api/reservations", async (req, res) => {
     // Nhận dữ liệu từ Frontend gửi lên
-    const { customer_id, property_id, sales_id } = req.body;
+    const { customer_id, property_id, users_id } = req.body;
     
     try {
       // 1. Kiểm tra Bất động sản có tồn tại và còn trống không
@@ -619,9 +619,9 @@ async function startServer() {
 
       // 2. Tạo phiếu giữ chỗ (Cho phép sales_id có thể null nếu chưa gán)
       const info = await pool.query(`
-        INSERT INTO reservations (customer_id, property_id, sales_id, reservation_code, expires_at)
+        INSERT INTO reservations (customer_id, property_id, users_id, reservation_code, expires_at)
         VALUES ($1, $2, $3, $4, $5) RETURNING id
-      `, [customer_id, property_id, sales_id || null, reservationCode, expiresAt.toISOString()]);
+      `, [customer_id, property_id, users_id || null, reservationCode, expiresAt.toISOString()]);
 
       // 3. Cập nhật trạng thái Bất động sản
       await pool.query("UPDATE properties SET status = 'Giữ chỗ' WHERE id = $1", [property_id]);
