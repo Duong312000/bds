@@ -618,10 +618,10 @@ async function startServer() {
 
       // 2. Tạo phiếu giữ chỗ (Cho phép sales_id có thể null nếu chưa gán)
       const info = await pool.query(`
-  INSERT INTO reservations (id, customer_id, property_id, users_id, expires_at)
-  VALUES ($1, $2, $3, $4, $5)
-  RETURNING id
-`, [id, customer_id, property_id, users_id || null, expiresAt.toISOString()]);
+        INSERT INTO reservations (id, customer_id, property_id, users_id, expires_at)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+`, [reservationCode, customer_id, property_id, users_id || null, expiresAt.toISOString()]);
 
       // 3. Cập nhật trạng thái Bất động sản
       await pool.query("UPDATE properties SET status = 'Giữ chỗ' WHERE id = $1", [property_id]);
@@ -676,7 +676,7 @@ async function startServer() {
   const client = await pool.connect();
 
   try {
-    const reservationId = Number(reservation_id);
+    const reservationId = String(reservation_id).trim();
     const depositAmount = Number(amount);
     const installmentCount = Number(installments);
 
