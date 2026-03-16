@@ -71,7 +71,7 @@ export const Transactions = ({ user }: TransactionsProps) => {
   try {
     const res = await api.createDeposit({
       reservation_id: reservationId,
-      amount: 50000000,
+      amount: 500,
       installments: Number(installments),
     });
 
