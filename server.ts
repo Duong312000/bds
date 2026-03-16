@@ -356,23 +356,7 @@ async function startServer() {
     }
   });
 
-  // 5. Cập nhật khách hàng
-  app.put("/api/customers/:id", async (req, res) => {
-    const { id } = req.params;
-    const { fullName, phoneNumber, email, address, nationalId, status } = req.body;
-    try {
-      await pool.query(`
-        UPDATE customers 
-        SET fullname = $1, phonenumber = $2, email = $3, address = $4, nationalid = $5, status = $6 
-        WHERE id = $7
-      `, [fullName, phoneNumber, email, address, nationalId, status, id]);
-      res.json({ success: true });
-    } catch (err) {
-      console.error("🔥 Lỗi cập nhật khách hàng:", err);
-      res.status(500).json({ success: false, message: "Lỗi khi cập nhật" });
-    }
-  });
-  
+  // 5. Cập nhật khách hàng  
   app.put("/api/customers/:id", async (req, res) => {
     const { id } = req.params;
     const { fullName, phoneNumber, email, address, nationalId, status } = req.body;
@@ -677,7 +661,7 @@ async function startServer() {
 
   try {
     const reservationId = String(reservation_id).trim();
-    const depositAmount = Math.floor(totalValue / 10);
+    const depositAmount = Math.floor(property.price / 10);
     const installmentCount = Number(installments);
 
     if (!reservationId || !Number.isFinite(depositAmount) || depositAmount <= 0) {
@@ -773,25 +757,46 @@ async function startServer() {
 
     // Chia đều tiền còn lại thành số nguyên để hợp với BIGINT
     const remaining = totalValue - depositAmount;
-    const baseAmount = Math.floor(remaining / installmentCount);
-    const remainder = remaining % installmentCount;
 
-    for (let i = 1; i <= installmentCount; i++) {
-      const dueDate = new Date();
-      dueDate.setMonth(dueDate.getMonth() + i);
+if (remaining < 0) {
+  await client.query("ROLLBACK");
+  return res.status(400).json({
+    success: false,
+    message: "Tiền còn lại không hợp lệ"
+  });
+}
 
-      const paymentAmount = baseAmount + (i <= remainder ? 1 : 0);
+if (remaining > 0 && installmentCount > remaining) {
+  await client.query("ROLLBACK");
+  return res.status(400).json({
+    success: false,
+    message: "Số đợt thanh toán quá lớn"
+  });
+}
 
-      await client.query(`
-        INSERT INTO payments (contract_id, amount, due_date, status)
-        VALUES ($1, $2, $3, $4)
-      `, [
-        contractId,
-        paymentAmount,
-        dueDate.toISOString().split("T")[0],
-        "Pending"
-      ]);
-    }
+if (remaining > 0) {
+  const baseAmount = Math.floor(remaining / installmentCount);
+  const remainder = remaining % installmentCount;
+
+  for (let i = 1; i <= installmentCount; i++) {
+    const dueDate = new Date();
+    dueDate.setMonth(dueDate.getMonth() + i);
+
+    const paymentAmount = baseAmount + (i <= remainder ? 1 : 0);
+
+    if (paymentAmount <= 0) continue;
+
+    await client.query(`
+      INSERT INTO payments (contract_id, amount, due_date, status)
+      VALUES ($1, $2, $3, $4)
+    `, [
+      contractId,
+      paymentAmount,
+      dueDate.toISOString().split("T")[0],
+      "Pending"
+    ]);
+  }
+}
 
     const custResult = await client.query(
       "SELECT fullName FROM customers WHERE id = $1",
@@ -1014,11 +1019,11 @@ async function startServer() {
   // Dashboard Stats
   app.get("/api/stats", async (req, res) => {
     try {
-      const monthlyContracts = await pool.query("SELECT count(*) as count FROM contracts WHERE EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)");
+      const monthlyContracts = await pool.query("SELECT count(*) as count FROM contracts WHERE EXTRACT(MONTH FROM createdDate) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)");
       const totalRevenue = await pool.query("SELECT sum(total_value) as total FROM contracts WHERE status = 'Completed'");
       const pendingContracts = await pool.query("SELECT count(*) as count FROM contracts WHERE status IN ('Draft', 'Customer_Confirmed')");
       
-      const newCustomers = await pool.query("SELECT count(*) as count FROM customers WHERE EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)");
+      const newCustomers = await pool.query("SELECT count(*) as count FROM customers WHERE EXTRACT(MONTH FROM createdDate) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)");
       const propertiesForSale = await pool.query("SELECT count(*) as count FROM properties WHERE status = 'Còn trống'");
       const propertiesSold = await pool.query("SELECT count(*) as count FROM properties WHERE status = 'Đã bán'");
       const totalTransactionValue = await pool.query("SELECT sum(total_value) as total FROM contracts WHERE status != 'Cancelled'");
@@ -1205,6 +1210,8 @@ async function startServer() {
       
       // 4. Delete customer
       await client.query("DELETE FROM customers WHERE id = $1", [id]);
+      await client.query("DELETE FROM deposits WHERE id = $1", [id]);
+      await client.query("DELETE FROM reservations WHERE id = $1", [id]);
       
       // 5. Log activity
       await client.query("INSERT INTO activities (type, content) VALUES ($1, $2)", ["system", `Khách hàng #${id} đã được xóa trực tiếp bởi quản lý ID: ${user_id || 'N/A'}.`]);
