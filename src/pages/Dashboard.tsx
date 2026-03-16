@@ -69,7 +69,7 @@ export const Dashboard = () => {
         />
         <StatCard 
           label="Doanh thu thực tế" 
-          value={formatCurrency(stats.totalRevenue)} 
+          value={formatCurrency((Number(stats?.totalRevenue) || 0) * 0.07)}
           icon={BarChart3} 
           trend="+5.4% so với tháng trước"
           color="bg-emerald-600"
