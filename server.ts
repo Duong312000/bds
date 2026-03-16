@@ -672,7 +672,7 @@ async function startServer() {
 
 
   app.post("/api/deposits", async (req, res) => {
-  const { reservation_id, amount, installments } = req.body;
+  const { reservation_id, installments } = req.body;
   const client = await pool.connect();
 
   try {
