@@ -31,72 +31,72 @@ async function initDB() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
-        username TEXT UNIQUE,
-        password TEXT,
-        role TEXT,
-        approved INTEGER DEFAULT 0 -- ERD ghi default là 0
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL,
+        approved INTEGER DEFAULT 0
       );
-
+      
       CREATE TABLE IF NOT EXISTS customers (
-        id SERIAL PRIMARY KEY, -- Tương đương customer_id trong ERD
-        fullName TEXT,
+        id SERIAL PRIMARY KEY,
+        fullName TEXT NOT NULL,
         phoneNumber TEXT,
         email TEXT,
         address TEXT,
         nationalId TEXT,
         status TEXT DEFAULT 'Mới',
-        createdBy INTEGER REFERENCES users(id) ON DELETE SET NULL, -- Tương đương FK id trong ERD
+        createdBy INTEGER REFERENCES users(id) ON DELETE SET NULL,
         createdDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-
+      
       CREATE TABLE IF NOT EXISTS properties (
-        id SERIAL PRIMARY KEY, -- Tương đương property_id trong ERD
+        id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
         type TEXT,
-        price BIGINT NOT NULL, -- Đã đổi REAL -> BIGINT để không sai số tiền tỷ
-        area REAL, -- Diện tích dùng số thập phân (REAL) thì OK
+        price BIGINT NOT NULL,
+        area REAL,
         location TEXT,
         status TEXT DEFAULT 'Còn trống',
         image_url TEXT,
         description TEXT,
         listing_type TEXT DEFAULT 'Bán'
       );
-
+      
       CREATE TABLE IF NOT EXISTS reservations (
         id SERIAL PRIMARY KEY,
-        customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
-        property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
         sales_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        reservation_code TEXT, -- BỔ SUNG DÒNG NÀY VÀO ĐÂY NHÉ
+        reservation_code TEXT UNIQUE,
         status TEXT DEFAULT 'Active',
         expires_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      
+        CONSTRAINT uq_reservation_customer_property UNIQUE (customer_id, property_id, status)
       );
-
+      
       CREATE TABLE IF NOT EXISTS deposits (
-        id SERIAL PRIMARY KEY, -- Tương đương deposit_id trong ERD
-        reservation_id INTEGER REFERENCES reservations(id) ON DELETE CASCADE,
-        customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
-        property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE,
-        amount BIGINT NOT NULL, -- Đã đổi REAL -> BIGINT
+        id SERIAL PRIMARY KEY,
+        reservation_id INTEGER UNIQUE REFERENCES reservations(id) ON DELETE CASCADE,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        amount BIGINT NOT NULL,
         status TEXT DEFAULT 'Pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-
+      
       CREATE TABLE IF NOT EXISTS contracts (
-        id SERIAL PRIMARY KEY, -- Tương đương contract_id trong ERD
-        property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE,
-        customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
-        deposit_id INTEGER REFERENCES deposits(id) ON DELETE SET NULL,
-        sales_id INTEGER REFERENCES users(id) ON DELETE SET NULL, -- Tương đương FK id trong ERD
-        total_value BIGINT NOT NULL, -- Đã đổi REAL -> BIGINT
+        id SERIAL PRIMARY KEY,
+        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        deposit_id INTEGER UNIQUE REFERENCES deposits(id) ON DELETE SET NULL,
+        sales_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        total_value BIGINT NOT NULL,
         status TEXT DEFAULT 'Draft',
         file_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-
-      -- Bảng requests và activities không có trong ERD, 
-      -- nhưng Frontend của hệ thống cần nó, nên t giữ lại và tối ưu luôn:
+      
       CREATE TABLE IF NOT EXISTS requests (
         id SERIAL PRIMARY KEY,
         customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE,
@@ -104,23 +104,27 @@ async function initDB() {
         request_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
         type TEXT DEFAULT 'Ownership',
         status TEXT DEFAULT 'Pending',
-        new_data JSONB, -- BẮT BUỘC JSONB ĐỂ KHÔNG LỖI 500 KHI CHỈNH SỬA
-        processed_by INTEGER REFERENCES users(id),
+        new_data JSONB,
+        processed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
         processed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       
       CREATE TABLE IF NOT EXISTS payments (
         id SERIAL PRIMARY KEY,
-        contract_id INTEGER REFERENCES contracts(id) ON DELETE CASCADE,
+        contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
         amount BIGINT NOT NULL,
         due_date DATE,
         status TEXT DEFAULT 'Pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-
+      
       CREATE TABLE IF NOT EXISTS activities (
         id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        property_id INTEGER REFERENCES properties(id) ON DELETE SET NULL,
+        contract_id INTEGER REFERENCES contracts(id) ON DELETE SET NULL,
         type TEXT,
         content TEXT,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
