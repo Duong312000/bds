@@ -618,10 +618,10 @@ async function startServer() {
 
       // 2. Tạo phiếu giữ chỗ (Cho phép sales_id có thể null nếu chưa gán)
       const info = await pool.query(`
-  INSERT INTO reservations (customer_id, property_id, users_id, id, expires_at)
+  INSERT INTO reservations (id, customer_id, property_id, users_id, expires_at)
   VALUES ($1, $2, $3, $4, $5)
   RETURNING id
-`, [customer_id, property_id, users_id || null, id, expiresAt.toISOString()]);
+`, [id, customer_id, property_id, users_id || null, expiresAt.toISOString()]);
 
       // 3. Cập nhật trạng thái Bất động sản
       await pool.query("UPDATE properties SET status = 'Giữ chỗ' WHERE id = $1", [property_id]);
