@@ -661,7 +661,9 @@ async function startServer() {
 
   try {
     const reservationId = String(reservation_id).trim();
-    const depositAmount = Math.floor(property.price / 10);
+    const property = propResult.rows[0];
+    const totalValue = Number(property.price);
+    const depositAmount = Math.floor(totalValue / 10);
     const installmentCount = Number(installments);
 
     if (!reservationId || !Number.isFinite(depositAmount) || depositAmount <= 0) {
@@ -698,7 +700,6 @@ async function startServer() {
       "SELECT price FROM properties WHERE id = $1",
       [reservation.property_id]
     );
-    const property = propResult.rows[0];
 
     if (!property) {
       await client.query("ROLLBACK");
@@ -708,7 +709,6 @@ async function startServer() {
       });
     }
 
-    const totalValue = Number(property.price);
 
     if (depositAmount > totalValue) {
       await client.query("ROLLBACK");
