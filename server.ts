@@ -709,7 +709,6 @@ if (!property) {
 
 const totalValue = Number(property.price);
 const depositAmount = Math.floor(totalValue / 10);
-    }
 
 
     if (depositAmount > totalValue) {
@@ -1025,7 +1024,7 @@ const depositAmount = Math.floor(totalValue / 10);
       const totalRevenue = await pool.query("SELECT sum(total_value) as total FROM contracts WHERE status = 'Completed'");
       const pendingContracts = await pool.query("SELECT count(*) as count FROM contracts WHERE status IN ('Draft', 'Customer_Confirmed')");
       
-      const newCustomers = await pool.query("SELECT count(*) as count FROM customers WHERE EXTRACT(MONTH FROM createdDate) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)");
+      const newCustomers = await pool.query("SELECT count(*) as count FROM customers WHERE EXTRACT(MONTH FROM createdDate) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM createdDate) = EXTRACT(YEAR FROM CURRENT_DATE)");
       const propertiesForSale = await pool.query("SELECT count(*) as count FROM properties WHERE status = 'Còn trống'");
       const propertiesSold = await pool.query("SELECT count(*) as count FROM properties WHERE status = 'Đã bán'");
       const totalTransactionValue = await pool.query("SELECT sum(total_value) as total FROM contracts WHERE status != 'Cancelled'");
