@@ -758,45 +758,45 @@ async function startServer() {
     // Chia đều tiền còn lại thành số nguyên để hợp với BIGINT
     const remaining = totalValue - depositAmount;
 
-if (remaining < 0) {
-  await client.query("ROLLBACK");
-  return res.status(400).json({
-    success: false,
-    message: "Tiền còn lại không hợp lệ"
-  });
-}
-
-if (remaining > 0 && installmentCount > remaining) {
-  await client.query("ROLLBACK");
-  return res.status(400).json({
-    success: false,
-    message: "Số đợt thanh toán quá lớn"
-  });
-}
-
-if (remaining > 0) {
-  const baseAmount = Math.floor(remaining / installmentCount);
-  const remainder = remaining % installmentCount;
-
-  for (let i = 1; i <= installmentCount; i++) {
-    const dueDate = new Date();
-    dueDate.setMonth(dueDate.getMonth() + i);
-
-    const paymentAmount = baseAmount + (i <= remainder ? 1 : 0);
-
-    if (paymentAmount <= 0) continue;
-
-    await client.query(`
-      INSERT INTO payments (contract_id, amount, due_date, status)
-      VALUES ($1, $2, $3, $4)
-    `, [
-      contractId,
-      paymentAmount,
-      dueDate.toISOString().split("T")[0],
-      "Pending"
-    ]);
-  }
-}
+    if (remaining < 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        success: false,
+        message: "Tiền còn lại không hợp lệ"
+      });
+    }
+    
+    if (remaining > 0 && installmentCount > remaining) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        success: false,
+        message: "Số đợt thanh toán quá lớn"
+      });
+    }
+    
+    if (remaining > 0) {
+      const baseAmount = Math.floor(remaining / installmentCount);
+      const remainder = remaining % installmentCount;
+    
+      for (let i = 1; i <= installmentCount; i++) {
+        const dueDate = new Date();
+        dueDate.setMonth(dueDate.getMonth() + i);
+    
+        const paymentAmount = baseAmount + (i <= remainder ? 1 : 0);
+    
+        if (paymentAmount <= 0) continue;
+    
+        await client.query(`
+          INSERT INTO payments (contract_id, amount, due_date, status)
+          VALUES ($1, $2, $3, $4)
+        `, [
+          contractId,
+          paymentAmount,
+          dueDate.toISOString().split("T")[0],
+          "Pending"
+        ]);
+      }
+    }
 
     const custResult = await client.query(
       "SELECT fullName FROM customers WHERE id = $1",
