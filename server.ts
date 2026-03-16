@@ -661,52 +661,54 @@ async function startServer() {
 
   try {
     const reservationId = String(reservation_id).trim();
-    const property = propResult.rows[0];
-    const totalValue = Number(property.price);
-    const depositAmount = Math.floor(totalValue / 10);
     const installmentCount = Number(installments);
-
-    if (!reservationId || !Number.isFinite(depositAmount) || depositAmount <= 0) {
+    
+    if (!reservationId) {
       return res.status(400).json({
         success: false,
-        message: "reservation_id hoặc amount không hợp lệ"
+        message: "reservation_id không hợp lệ"
       });
     }
-
+    
     if (!Number.isInteger(installmentCount) || installmentCount <= 0) {
       return res.status(400).json({
         success: false,
         message: "installments phải là số nguyên > 0"
       });
     }
-
+    
     await client.query("BEGIN");
-
+    
     const resResult = await client.query(
       "SELECT * FROM reservations WHERE id = $1",
       [reservationId]
     );
     const reservation = resResult.rows[0];
-
+    
     if (!reservation || reservation.status !== "Active") {
       await client.query("ROLLBACK");
       return res.status(400).json({
         success: false,
         message: "Phiếu giữ chỗ không hợp lệ hoặc đã hết hạn"
       });
-    }
+}
 
-    const propResult = await client.query(
-      "SELECT price FROM properties WHERE id = $1",
-      [reservation.property_id]
-    );
+const propResult = await client.query(
+  "SELECT price FROM properties WHERE id = $1",
+  [reservation.property_id]
+);
+const property = propResult.rows[0];
 
-    if (!property) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy bất động sản"
-      });
+if (!property) {
+  await client.query("ROLLBACK");
+  return res.status(404).json({
+    success: false,
+    message: "Không tìm thấy bất động sản"
+  });
+}
+
+const totalValue = Number(property.price);
+const depositAmount = Math.floor(totalValue / 10);
     }
 
 
@@ -1019,7 +1021,7 @@ async function startServer() {
   // Dashboard Stats
   app.get("/api/stats", async (req, res) => {
     try {
-      const monthlyContracts = await pool.query("SELECT count(*) as count FROM contracts WHERE EXTRACT(MONTH FROM createdDate) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)");
+      const monthlyContracts = await pool.query("SELECT count(*) as count FROM contracts WHERE EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)");
       const totalRevenue = await pool.query("SELECT sum(total_value) as total FROM contracts WHERE status = 'Completed'");
       const pendingContracts = await pool.query("SELECT count(*) as count FROM contracts WHERE status IN ('Draft', 'Customer_Confirmed')");
       
@@ -1210,7 +1212,7 @@ async function startServer() {
       
       // 4. Delete customer
       await client.query("DELETE FROM customers WHERE id = $1", [id]);
-      await client.query("DELETE FROM deposits WHERE id = $1", [id]);
+      await client.query("DELETE FROM deposits WHERE customer_id = $1", [id]);
       await client.query("DELETE FROM reservations WHERE id = $1", [id]);
       
       // 5. Log activity
