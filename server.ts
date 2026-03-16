@@ -76,7 +76,7 @@ async function initDB() {
       
       CREATE TABLE IF NOT EXISTS deposits (
         id SERIAL PRIMARY KEY,
-        reservation_id INTEGER UNIQUE REFERENCES reservations(id) ON DELETE CASCADE,
+        reservation_id TEXT UNIQUE REFERENCES reservations(id) ON DELETE CASCADE,
         customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
         property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
         amount BIGINT NOT NULL,
