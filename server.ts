@@ -66,7 +66,7 @@ async function initDB() {
         id SERIAL PRIMARY KEY,
         customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
         property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-        sales_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        users_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         reservation_code TEXT UNIQUE,
         status TEXT DEFAULT 'Active',
         expires_at TIMESTAMP,
